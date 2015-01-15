@@ -1,0 +1,69 @@
+# Tritech Micron Scan
+
+# Goal
+# Note: any unspecified goals will default to the Sonar's current settings.
+
+# Scan continuously or only a sector.
+# A continuous scan will need to be preempted for it to succeed.
+bool continuous
+
+# Rotate clockwise (right) or not.
+bool scanright
+
+# Defines mapping of the received amplitudes, the full range is between ad_low
+# and ad_low + ad_span
+# Values range from 0 to 255 and map out to 0 to 80dB.
+uint8 ad_low
+uint8 ad_span
+
+# If not continous, select left and right limit of sector scan.
+# Values are in 1/16th Gradians.
+uint16 left_limit
+uint16 right_limit
+
+# Motor speed in units of 10 microseconds.
+# Default value is 25.
+uint8 mo_time
+
+# Desired range in decimeters.
+# Note: this does not control the sonar in any way, simply provided to let the
+#   users note the current range settings.
+uint16 range_scale
+
+# Definition of the range and resolution:
+#   ad_interval: Sampling interval of each range bin in units of 640 ns.
+#   nbins: Number of bins, up to 800.
+# See 'mtHeadCommand' in docs for more information.
+uint16 ad_interval
+uint16 nbins
+
+# Scanning motor step angle size.
+# Value is in 1/16th Gradians.
+# Default values are:
+#   32: Low resolution (1.8 deg)
+#   16: Medium resolution (0.9 deg)
+#    8: High resolution (0.45 deg)
+uint8 step
+
+---
+
+# Result
+# When scan is complete or preempted.
+
+# Returns current sonar heading when scan is done if one needs to optimize for
+# the next scan's direction.
+# Value is in 1/16th Gradians.
+uint16 heading
+
+---
+
+# Feedback
+# This will be received at every motor step.
+
+# Heading of the data set.
+# Value is in 1/16th Gradians.
+uint16 heading
+
+# Amplitudes at every bin.
+# Values range from 0 to 255.
+uint8[] bins
