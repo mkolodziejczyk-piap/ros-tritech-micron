@@ -2,7 +2,7 @@
 
 """Tritech Micron Sonar commands."""
 
-__authors__ = "Erin Havens, Anass Al-Wohoush"
+__author__ = "Erin Havens, Anass Al-Wohoush"
 __version__ = "0.1.0"
 
 
