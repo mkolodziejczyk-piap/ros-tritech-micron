@@ -12,6 +12,7 @@ from replies import Reply
 from exceptions import PacketIncomplete
 
 
+
 class Socket(object):
 
     """Serial communication socket.
@@ -27,7 +28,7 @@ class Socket(object):
             port: Serial port.
         """
         self.conn = serial.Serial(port=port)
-  
+
     def open(self):
         self.conn.open()
 
@@ -53,20 +54,24 @@ class Socket(object):
             PacketCorrupted: Packet is corrupt.
         """
         bitstream = bitstring.BitStream()
-        # Waits for the '@' char
-        while self.conn.read(1) != '@':
-            pass
 
-        #Parses minimum packet length by default
-        bitstream._append(self.conn.read(13))
+        # Waits for the '@' char.
+        while True:
+            current_char = self.conn.read(1)
+            if current_char == '@':
+                bitstream.append(current_char)
+                break
+
+        # Parses minimum packet length by default.
+        bitstream.append(self.conn.read(13))
 
         # Keep reading one byte at a time until packet's complete and parsed.
         while True:
             # If byte is end of packet, try to parse.
-            current_char = self.conn.read(1)  
-            bitstream._append(current_char)
+            current_char = self.conn.read(1)
+            bitstream.append(current_char)
 
-            if current_char == 'LF':
+            if current_char == 0x0A:
                 try:
                     reply = Reply(bitstream)
                     break
