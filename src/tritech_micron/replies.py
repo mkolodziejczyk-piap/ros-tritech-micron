@@ -2,7 +2,7 @@
 
 """Tritech Micron Sonar replies."""
 
-__author__ = "Anass Al-Wohoush"
+__author__ = "Anass Al-Wohoush, Jey Kumar"
 __version__ = "0.0.1"
 
 
@@ -37,6 +37,7 @@ class Reply(object):
         self.id = None
         self.size = None
         self.payload = None
+        self.sequence = None
 
         self.parse()
 
@@ -50,4 +51,27 @@ class Reply(object):
             PacketIncomplete: Packet is incomplete.
             PacketCorrupted: Packet is corrupted.
         """
+        
+        # Parses message header and payload and checks for line terminator.
+        self.bitsream.bytepos = 0
+        if self.bitstream.endswith('0x0a'):
+            self.header, self.payload = self.bitstream[:-8].unpack('hex:104, hex')
+        else:
+            raise PacketIncomplete
+        
+        # Parses message ID.
+        self.bitsream.bytepos = 10
+        self.id = self.bitstream.read('hex:8')
+        
+        # Parses message sequence.
+        self.bitsream.bytepos = 11
+        self.sequence = self.bitstream.read('hex:8')
+        
+        # Measures size of packet in bytes (excluding first 6 bytes).
+        self.size = self.bitstream[48].len / 8
+        
+        # Checks if packet contains all relevant fields (except line terminator).
+        pass
+        
+        # Checks if the size of the packet is correct.
         pass
