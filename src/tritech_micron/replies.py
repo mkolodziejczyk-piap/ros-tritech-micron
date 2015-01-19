@@ -2,8 +2,8 @@
 
 """Tritech Micron Sonar replies."""
 
-__author__ = "Anass Al-Wohoush, Jey Kumar"
-__version__ = "0.0.1"
+__author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
+__version__ = "0.2.0"
 
 
 import bitstring
@@ -51,27 +51,72 @@ class Reply(object):
             PacketIncomplete: Packet is incomplete.
             PacketCorrupted: Packet is corrupted.
         """
-        
-        # Parses message header and payload and checks for line terminator.
-        self.bitsream.bytepos = 0
+
+        # We parse msg header. We check for line terminator.
+        self.bitstream.bytepos = 0
         if self.bitstream.endswith('0x0a'):
-            self.header, self.payload = self.bitstream[:-8].unpack('hex:104, hex')
+            self.header = self.bitstream.read('hex:8')
         else:
             raise PacketIncomplete
-        
-        # Parses message ID.
-        self.bitsream.bytepos = 10
-        self.id = self.bitstream.read('hex:8')
-        
-        # Parses message sequence.
-        self.bitsream.bytepos = 11
+
+        # We check for message header '@'.
+        if not self.header == '0x40':
+            raise PacketCorrupted
+
+        # We find package Hex Length from byte 6, not incl. LF
+        # as it is noted in packet bytes 2-5.
+        self.bitstream.bytepos = 1
+        self.size = self.bitstream.read['uint:32']
+
+        # We check if the size of the packet is correct,
+        # by comparing packet's real size to self.size.
+        real_size = len(self.bitstream) - 56  # 6 bytes & LF (8 bytes)
+        if real_size <= self.size:
+            raise PacketIncomplete
+        elif real_size >= self.size:
+            raise PacketCorrupted
+
+        # We check if Bin Length equals Hex Length.
+        # Note we read num as little-endian unsigned int.
+        self.bitstream.bytepos = 5
+        bin_ln = self.bitstream.read('uintle:n')
+        if not bin_ln == self.size:
+            raise PacketCorrupted
+
+        # We check Packet Source Identification Node 0-240.
+        self.bitstream.bytepos = 7
+        source_id = self.bitstream.read('uint:8')
+        if not source_id >= 0 and source_id <= 240:
+            raise PacketCorrupted
+
+        # We check Packet Destination Identification Node 0-240.
+        self.bitstream.bytepos = 8
+        dest_id = self.bitstream.read('uint:8')
+        if not dest_id >= 0 and dest_id <= 240:
+            raise PacketCorrupted
+
+        # We check for and parse msg ID.
+        self.bitstream.bytepos = 10
+        self.id = self.bitstream.read('uint:8')
+        if not self.id <= 72 and self.id >= 0:
+            raise PacketCorrupted
+
+        # We parse msg sequence bitset.
+        self.bitstream.bytepos = 11
         self.sequence = self.bitstream.read('hex:8')
-        
-        # Measures size of packet in bytes (excluding first 6 bytes).
-        self.size = self.bitstream[48].len / 8
-        
-        # Checks if packet contains all relevant fields (except line terminator).
+
+        #We read bitset to determine number of packets.
         pass
-        
-        # Checks if the size of the packet is correct.
-        pass
+
+        # We check Tx Node number. Should be equal to
+        # Packet Source Identification number.
+        self.bitstream.bytepos = 12
+        tx_node = self.bitstream.read('uint:8')
+        if not tx_node == source_id:
+            raise PacketCorrupted
+
+        # We parse msg payload. (Byte 14 to end, noN LF)
+        self.bitstream.bytepos = 13
+        size_payload = self.size - 8
+        size_payload = size_payload * 8
+        self.payload = self.bitstream.read('hex:i', i=size_payload)
