@@ -70,7 +70,7 @@ class Reply(object):
 
         # We check if the size of the packet is correct,
         # by comparing packet's real size to self.size.
-        real_size = self.bitstream.len - 56  # 6 bytes & LF (8 bytes)
+        real_size = self.bitstream.len - 48  # 6 bytes
         if real_size <= self.size:
             raise PacketIncomplete
         elif real_size >= self.size:
@@ -79,7 +79,7 @@ class Reply(object):
         # We check if Bin Length equals Hex Length.
         # Note we read num as little-endian unsigned int.
         self.bitstream.bytepos = 5
-        bin_ln = self.bitstream.read('uintle:n')
+        bin_ln = self.bitstream.read('uintle:16')
         if not bin_ln == self.size:
             raise PacketCorrupted
 
@@ -116,7 +116,7 @@ class Reply(object):
         if not tx_node == source_id:
             raise PacketCorrupted
 
-        # We parse msg payload. (Byte 14 to end, non LF)
+        # We parse msg payload (byte 14 to end, not incl. LF).
         self.bitstream.bytepos = 13
-        size_payload = (self.size - 8) * 8
+        size_payload = self.size * 8
         self.payload = self.bitstream.read('hex:i', i=size_payload)
