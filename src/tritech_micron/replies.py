@@ -70,7 +70,7 @@ class Reply(object):
 
         # We check if the size of the packet is correct,
         # by comparing packet's real size to self.size.
-        real_size = len(self.bitstream) - 56  # 6 bytes & LF (8 bytes)
+        real_size = self.bitstream.len - 56  # 6 bytes & LF (8 bytes)
         if real_size <= self.size:
             raise PacketIncomplete
         elif real_size >= self.size:
@@ -95,17 +95,18 @@ class Reply(object):
         if not dest_id >= 0 and dest_id <= 240:
             raise PacketCorrupted
 
-        # We check for and parse msg ID.
+        # We check for and parse msg ID 0-72.
         self.bitstream.bytepos = 10
         self.id = self.bitstream.read('uint:8')
-        if not self.id <= 72 and self.id >= 0:
+        if not self.id >= 0 and self.id <= 72:
             raise PacketCorrupted
 
         # We parse msg sequence bitset.
         self.bitstream.bytepos = 11
         self.sequence = self.bitstream.read('hex:8')
 
-        #We read bitset to determine number of packets.
+        # We read bitset to determine number of packets.
+        # Necessary for Multi-packet mode.
         pass
 
         # We check Tx Node number. Should be equal to
@@ -115,8 +116,7 @@ class Reply(object):
         if not tx_node == source_id:
             raise PacketCorrupted
 
-        # We parse msg payload. (Byte 14 to end, noN LF)
+        # We parse msg payload. (Byte 14 to end, non LF)
         self.bitstream.bytepos = 13
-        size_payload = self.size - 8
-        size_payload = size_payload * 8
+        size_payload = (self.size - 8) * 8
         self.payload = self.bitstream.read('hex:i', i=size_payload)
