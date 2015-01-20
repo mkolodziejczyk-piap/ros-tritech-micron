@@ -3,14 +3,13 @@
 """Tritech Micron Sonar serial communication handler."""
 
 __author__ = "Anass Al-Wohoush, Jana Pavlasek, Malcolm Watt"
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 
 import serial
 import bitstring
 from replies import Reply
 from exceptions import PacketIncomplete
-
 
 
 class Socket(object):
@@ -63,7 +62,7 @@ class Socket(object):
                 break
 
         # Parses minimum packet length by default.
-        bitstream.append(self.conn.read(13))
+        bitstream.append(self.conn.read(12))
 
         # Keep reading one byte at a time until packet's complete and parsed.
         while True:
