@@ -3,10 +3,9 @@
 """Tritech Micron Sonar replies."""
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
-__version__ = "0.2.0"
+__version__ = "0.2.3"
 
 
-import bitstring
 from exceptions import PacketIncomplete, PacketCorrupted
 
 
@@ -15,10 +14,11 @@ class Reply(object):
     """Parses and verifies reply packets.
 
     Attributes:
-        header: 13 byte message header.
         id: Message ID.
-        size: Number of bytes in packet from 6th byte onwards.
+        is_last: Whether packet is last in sequence.
         payload: Data excluding header and end character.
+        sequence: Packet sequence.
+        size: Number of bytes in packet from 6th byte onwards.
     """
 
     def __init__(self, bitstream):
@@ -33,11 +33,11 @@ class Reply(object):
         """
         self.bitstream = bitstream
 
-        self.header = None
         self.id = None
-        self.size = None
+        self.is_last = None
         self.payload = None
         self.sequence = None
+        self.size = None
 
         self.parse()
 
@@ -51,26 +51,26 @@ class Reply(object):
             PacketIncomplete: Packet is incomplete.
             PacketCorrupted: Packet is corrupted.
         """
-
         # We parse msg header. We check for line terminator.
         self.bitstream.bytepos = 0
         if self.bitstream.endswith('0x0a'):
-            self.header = self.bitstream.read('hex:8')
+            header = self.bitstream.read('uint:8')
         else:
             raise PacketIncomplete
 
         # We check for message header '@'.
-        if not self.header == '0x40':
+        if header != 0x40:
             raise PacketCorrupted
 
-        # We find package Hex Length from byte 6, not incl. LF
+        # We find package Hex Length from byte 6, excluding LF
         # as it is noted in packet bytes 2-5.
         self.bitstream.bytepos = 1
-        self.size = self.bitstream.read['uint:32']
+        # TODO (havense): Parse ASCII characters to hex
+        self.size = self.bitstream.read('uint:32')
 
         # We check if the size of the packet is correct,
         # by comparing packet's real size to self.size.
-        real_size = self.bitstream.len - 48  # 6 bytes
+        real_size = (self.bitstream.len / 8) - 6  # 6 bytes
         if real_size <= self.size:
             raise PacketIncomplete
         elif real_size >= self.size:
@@ -80,30 +80,33 @@ class Reply(object):
         # Note we read num as little-endian unsigned int.
         self.bitstream.bytepos = 5
         bin_ln = self.bitstream.read('uintle:16')
-        if not bin_ln == self.size:
+        if bin_ln != self.size:
             raise PacketCorrupted
 
-        # We check Packet Source Identification Node 0-240.
+        # We parse Packet Source Identification Node.
         self.bitstream.bytepos = 7
         source_id = self.bitstream.read('uint:8')
-        if not source_id >= 0 and source_id <= 240:
-            raise PacketCorrupted
 
-        # We check Packet Destination Identification Node 0-240.
+        # We check Packet Destination Identification Node is 255.
         self.bitstream.bytepos = 8
         dest_id = self.bitstream.read('uint:8')
-        if not dest_id >= 0 and dest_id <= 240:
+        if dest_id != 255:
             raise PacketCorrupted
+
+        # We check for size following byte 10, excluding LF.
+        self.bitstream.bytepos = 9
+        pass
 
         # We check for and parse msg ID 0-72.
         self.bitstream.bytepos = 10
         self.id = self.bitstream.read('uint:8')
-        if not self.id >= 0 and self.id <= 72:
+        if not 0 <= self.id <= 72:
             raise PacketCorrupted
 
         # We parse msg sequence bitset.
         self.bitstream.bytepos = 11
-        self.sequence = self.bitstream.read('hex:8')
+        self.is_last = self.bitstream.read('bool')
+        self.sequence = self.bitstream.read('uint:7')
 
         # We read bitset to determine number of packets.
         # Necessary for Multi-packet mode.
@@ -113,10 +116,10 @@ class Reply(object):
         # Packet Source Identification number.
         self.bitstream.bytepos = 12
         tx_node = self.bitstream.read('uint:8')
-        if not tx_node == source_id:
+        if tx_node != source_id:
             raise PacketCorrupted
 
-        # We parse msg payload (byte 14 to end, not incl. LF).
+        # We parse msg payload (byte 14 to end, excluding LF).
         self.bitstream.bytepos = 13
         size_payload = self.size * 8
         self.payload = self.bitstream.read('hex:i', i=size_payload)
