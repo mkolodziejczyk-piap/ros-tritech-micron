@@ -3,7 +3,7 @@
 """Tritech Micron Sonar replies."""
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 
 from exceptions import PacketIncomplete, PacketCorrupted
@@ -95,7 +95,16 @@ class Reply(object):
 
         # We check for size following byte 10, excluding LF.
         self.bitstream.bytepos = 9
-        pass
+        byte_count = self.bitstream.read('uint:8')
+        if self.id == 2 and byte_count == 0:
+            # mtHeadData single-packet replies are different; always 0.
+            # Could be used to confirm whether it's in single-packet mode.
+            pass
+        else:
+            # For all other replies, check size.
+            # Byte count differs from self.size by 5 bytes.
+            if byte_count != self.size - 5:
+                raise PacketCorrupted
 
         # We check for and parse msg ID 0-72.
         self.bitstream.bytepos = 10
