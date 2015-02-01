@@ -3,7 +3,7 @@
 """Tritech Micron Sonar replies."""
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 from exceptions import PacketIncomplete, PacketCorrupted
@@ -65,8 +65,9 @@ class Reply(object):
         # We find package Hex Length from byte 6, excluding LF
         # as it is noted in packet bytes 2-5.
         self.bitstream.bytepos = 1
-        # TODO (havense): Parse ASCII characters to hex
-        self.size = self.bitstream.read('uint:32')
+        hex_list = [self.bitstream.read('hex:8') for i in range(4)]
+        ascii_string = ''.join([chr(i)for i in hex_list])
+        self.size = int(ascii_string, 16)
 
         # We check if the size of the packet is correct,
         # by comparing packet's real size to self.size.
