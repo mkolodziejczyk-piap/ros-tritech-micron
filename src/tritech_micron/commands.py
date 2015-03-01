@@ -2,52 +2,46 @@
 
 """Tritech Micron Sonar commands."""
 
-__author__ = "Erin Havens, Anass Al-Wohoush"
-__version__ = "0.1.0"
+import struct
+
+__author__ = "Anass Al-Wohoush, Erin Havens"
+__version__ = "0.5.0"
 
 
 class Command(object):
 
-    """Enumeration of available commands and their respective message IDs."""
+    """Sonar command."""
 
-    NULL = 0
-    VERSION_DATA = 1
-    HEAD_DATA = 2  # The MSG reply in response to SEND_DATA commands.
-    SPECT_DATA = 3
-    ALIVE = 4  # On power-up, the broadcast state of Motor, Transducer, Params.
-    PRG_ACK = 5
-    BB_USER_DATA = 6
-    TEST_DATA = 7
-    AUD_DATA = 8
-    ADC_DATA = 9
-    ADC_REQ = 10
-    LAN_STATUS = 13
-    SET_TIME = 14
-    TIMEOUT = 15
-    REBOOT = 16  # Reboots device.
-    PERFORMANCE_DATA = 17
-    HEAD_COMMAND = 19  # Update parameters.
-    ERASE_SECTOR = 20
-    PROG_BLOCK = 21
-    COPY_BOOT_BLK = 22
-    SEND_VERSION = 23  # Request version.
-    SEND_BB_USER = 24
-    SEND_DATA = 25  # Perform sample set.
-    SED_PERF_NCE_DATA = 26
-    FPGA_TEST = 40
-    FPGA_ERASE = 41
-    FPGA_PROGRAM = 42
-    SEND_FPGA_FLASH_ST = 47
-    FPGA_TEST_DATA = 48
-    FPGA_FLASH_ST_DATA = 49
-    SEND_FPGA_VERSION = 56
-    FPGA_VERSION_DATA = 57
-    FGPA_DO_CALIBRATE = 61
-    SEND_FPGA_CAL_DATA = 62
-    FPGA_CAL_DATA = 63
-    ZERO_FPGA_CAL = 64
-    STOP_ALIVES = 66
-    RESET_TO_DEFAULTS = 70
-    CHANGE_VER_DATA = 71
-    FGPA_PROG_USR_CDE = 72
+    def __init__(self, id, payload=None):
+        """Constructs Command object.
 
+        Args:
+            id: Message ID.
+            payload: Message payload (optional).
+        """
+        self.id = id
+        self.payload = payload if payload else ""
+
+    def to_string(self):
+        """Constructs corresponding string of bytes to send to sonar.
+
+        Returns:
+            String representation of data.
+        """
+        header = chr(0x40)
+        tx_node = chr(0xFF)
+        rx_node = chr(0x02)
+        message_id = chr(self.id)
+        sequence = chr(0x80)
+        node = chr(0x02)
+        line_feed = chr(0x0A)
+
+        _size = len(self.payload) + 8
+        hex_size = "{:0>4}".format(hex(_size)[2:])
+        bin_size = struct.pack("<h", _size)
+        bytes_left = chr(_size - 5)
+
+        return "".join((
+            header, hex_size, bin_size, tx_node, rx_node, bytes_left,
+            message_id, self.payload, sequence, node, line_feed
+        ))

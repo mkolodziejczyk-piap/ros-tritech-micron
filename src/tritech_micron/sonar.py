@@ -45,7 +45,6 @@ class Sonar(object):
         """Initializes sonar."""
         self.update()
         self.initialized = True
-        pass
 
     def close(self):
         """Closes sonar connection."""
