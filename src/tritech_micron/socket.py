@@ -2,14 +2,13 @@
 
 """Tritech Micron Sonar serial communication handler."""
 
-__author__ = "Anass Al-Wohoush, Jana Pavlasek, Malcolm Watt"
-__version__ = "0.0.3"
-
-
 import serial
 import bitstring
 from replies import Reply
 from exceptions import PacketIncomplete
+
+__author__ = "Anass Al-Wohoush, Jana Pavlasek, Malcolm Watt"
+__version__ = "0.0.3"
 
 
 class Socket(object):
@@ -26,7 +25,7 @@ class Socket(object):
         Args:
             port: Serial port.
         """
-        self.conn = serial.Serial(port=port)
+        self.conn = serial.Serial(port=port, baudrate=115200)
 
     def open(self):
         self.conn.open()

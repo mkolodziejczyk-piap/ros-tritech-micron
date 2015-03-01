@@ -2,11 +2,10 @@
 
 """Tritech Micron Sonar."""
 
+from socket import Socket
+
 __author__ = "Anass Al-Wohoush"
 __version__ = "0.0.1"
-
-
-from socket import Socket
 
 
 class Sonar(object):

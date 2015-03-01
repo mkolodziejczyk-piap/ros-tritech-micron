@@ -2,11 +2,10 @@
 
 """Tritech Micron Sonar replies."""
 
+from exceptions import PacketIncomplete, PacketCorrupted
+
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
 __version__ = "0.4.0"
-
-
-from exceptions import PacketIncomplete, PacketCorrupted
 
 
 class Reply(object):
