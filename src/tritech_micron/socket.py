@@ -9,7 +9,7 @@ from commands import Command
 from exceptions import PacketIncomplete
 
 __author__ = "Anass Al-Wohoush, Jana Pavlasek, Malcolm Watt"
-__version__ = "0.0.3"
+__version__ = "0.5.0"
 
 
 class Socket(object):
@@ -27,7 +27,6 @@ class Socket(object):
             port: Serial port.
         """
         self.conn = serial.Serial(port=port, baudrate=115200)
-        self._queue =
 
     def open(self):
         """Opens serial connection."""
@@ -51,20 +50,19 @@ class Socket(object):
         """Waits for and returns Reply.
 
         Returns:
-            First complete reply if no message ID was expected, otherwise
-            first complete reply of expected message ID.
+            First complete reply if expected message ID was not specified,
+            otherwise first complete reply of expected message ID.
 
         Raises:
             PacketCorrupted: Packet is corrupt.
         """
         done = False
         while not done:
-            bitstream = bitstring.BitStream("0x40")
-
-            # Waits for the '@' char.
+            # Wait for the '@' character.
             self.conn.readline(eol="@")
 
             # Read one line at a time until packet is complete and parsed.
+            bitstream = bitstring.BitStream("0x40")
             while True:
                 # Read until new line.
                 current_line = self.conn.readline()

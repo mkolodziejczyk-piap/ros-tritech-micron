@@ -28,7 +28,7 @@ class Command(object):
         Returns:
             String representation of data.
         """
-        header = chr(0x40)
+        header = "@"
         tx_node = chr(0xFF)
         rx_node = chr(0x02)
         message_id = chr(self.id)

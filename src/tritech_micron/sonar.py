@@ -5,7 +5,7 @@
 from socket import Socket
 
 __author__ = "Anass Al-Wohoush"
-__version__ = "0.0.1"
+__version__ = "0.5.0"
 
 
 class Sonar(object):
@@ -61,7 +61,7 @@ class Sonar(object):
             Reply.
         """
         self.conn.send(command)
-        return self.conn.get_reply()
+        return self.conn.get_reply(expected=command)
 
     def update(self, adc8on=None, continuous=None, scanright=None, step=None,
                ad_low=None, ad_span=None, left_limit=None, right_limit=None,
