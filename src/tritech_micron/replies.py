@@ -147,5 +147,5 @@ class Reply(object):
 
         # Parse message payload (byte 14 to end, excluding LF).
         self.bitstream.bytepos = 13
-        size_payload = self.size * 8
-        self.payload = self.bitstream.read("hex:i", i=size_payload)
+        size_payload = (self.size - 8) * 8
+        self.payload = self.bitstream.read(size_payload)
