@@ -5,7 +5,7 @@
 from exceptions import PacketIncomplete, PacketCorrupted
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 
 class Reply(object):
@@ -40,6 +40,12 @@ class Reply(object):
 
         self.parse()
 
+    def __str__(self):
+        """Returns string representation of reply."""
+        return "<msg: {s.id}, {s.size} bytes, '0x{s.bitstream.hex}'>".format(
+            s=self
+        )
+
     def parse(self):
         """Parses packet into header, message ID, sequence and payload.
 
@@ -61,28 +67,28 @@ class Reply(object):
         if header != 0x40:
             raise PacketCorrupted("Unexpected header: {}".format(header))
 
-        # We find package Hex Length from byte 6, excluding LF
+        # Find package Hex Length from byte 6, excluding LF
         # as it is noted in packet bytes 2-5.
         self.bitstream.bytepos = 1
         hex_list = [self.bitstream.read("hex:8") for i in range(4)]
-        ascii_string = ''.join([chr(i)for i in hex_list])
+        ascii_string = ''.join((chr(int(i, 16)) for i in hex_list))
         self.size = int(ascii_string, 16)
 
-        # We check if the size of the packet is correct,
+        # Check if the size of the packet is correct,
         # by comparing packet's real size to self.size.
         real_size = (self.bitstream.len / 8) - 6  # 6 bytes
-        if real_size <= self.size:
+        if real_size < self.size:
             raise PacketIncomplete(
                 "Packet is undersize: {} / {}"
                 .format(real_size, self.size)
             )
-        elif real_size >= self.size:
+        elif real_size > self.size:
             raise PacketCorrupted(
                 "Packet is oversize: {} / {}"
                 .format(real_size, self.size)
             )
 
-        # We check if Bin Length equals Hex Length.
+        # Check if Bin Length equals Hex Length.
         # Note we read num as little-endian unsigned int.
         self.bitstream.bytepos = 5
         bin_ln = self.bitstream.read("uintle:16")
@@ -92,7 +98,7 @@ class Reply(object):
                 .format(bin_ln, self.size)
             )
 
-        # We parse Packet Source Identification Node.
+        # Parse Packet Source Identification Node.
         self.bitstream.bytepos = 7
         source_id = self.bitstream.read("uint:8")
 
