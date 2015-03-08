@@ -3,6 +3,7 @@
 """Tritech Micron Sonar commands."""
 
 import struct
+import bitstring
 
 __author__ = "Anass Al-Wohoush, Erin Havens"
 __version__ = "0.5.0"
@@ -20,7 +21,7 @@ class Command(object):
             payload: Message payload (optional).
         """
         self.id = id
-        self.payload = payload if payload else ""
+        self.payload = payload if payload else bitstring.BitStream()
 
     def to_string(self):
         """Constructs corresponding string of bytes to send to sonar.
@@ -36,12 +37,12 @@ class Command(object):
         node = chr(0x02)
         line_feed = chr(0x0A)
 
-        _size = len(self.payload) + 8
+        _size = (self.payload.length + 8) / 8
         hex_size = "{:0>4}".format(hex(_size)[2:])
         bin_size = struct.pack("<h", _size)
         bytes_left = chr(_size - 5)
 
         return "".join((
             header, hex_size, bin_size, tx_node, rx_node, bytes_left,
-            message_id, self.payload, sequence, node, line_feed
+            message_id, self.payload.tobytes(), sequence, node, line_feed
         ))
