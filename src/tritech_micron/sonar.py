@@ -4,6 +4,7 @@
 
 import struct
 import datetime
+import bitstring
 from socket import Socket
 from messages import Message
 
@@ -21,17 +22,28 @@ class Sonar(object):
         ...
     """
 
-    def __init__(self, port="/dev/sonar"):
+    def __init__(self, port="/dev/sonar", inverted=False):
         """Constructs Sonar object.
 
         Args:
             port: Serial port.
         """
         self.initialized = False
+        self.inverted = True
 
         self.adc8on = True
         self.continuous = True
         self.scanright = True
+        self.step = 16
+        self.ad_low = 0
+        self.ad_span = 80
+        self.left_limit = 5600
+        self.right_limit = 800
+        self.mo_time = 25
+        self.range = 20
+        self.nbins = 1500
+        self.gain = 0.40
+        self.speed = 1500.0
 
         self.on_time = datetime.timedelta(0)
         self.heading = None
@@ -49,7 +61,6 @@ class Sonar(object):
     def __enter__(self):
         """Initializes sonar for first use."""
         self.init()
-        self.update()
         return self
 
     def __exit__(self, type, value, traceback):
@@ -59,6 +70,7 @@ class Sonar(object):
     def init(self):
         """Initializes sonar."""
         self.update()
+        self.set()
         self.initialized = True
 
     def close(self):
@@ -66,24 +78,42 @@ class Sonar(object):
         self.conn.close()
         self.initialized = False
 
-    def get(self, command):
+    def get(self, message=None):
         """Sends command and returns reply.
 
         Args:
-            command: Command to send.
+            message: Message to expect (default: first to come in).
 
         Returns:
             Reply.
         """
-        self.conn.send(command)
-        reply = self.conn.get_reply()
-        if reply.id == Message.ALIVE:
-            self._update_state(reply)
-        return reply
+        while True:
+            reply = self.conn.get_reply()
+            if reply.id == Message.ALIVE:
+                self._update_state(reply)
 
-    def params(self, adc8on=None, continuous=None, scanright=None, step=None,
-               ad_low=None, ad_span=None, left_limit=None, right_limit=None,
-               mo_time=None, range_scale=None, ad_interval=None, nbins=None):
+            if message is not None and reply.id == message:
+                return reply
+
+    def send(self, command):
+        """Sends command and returns reply.
+
+        Args:
+            command: Command to send.
+        """
+        self.conn.send(command)
+
+    def set(self, adc8on=None, continuous=None, scanright=None, step=None,
+            ad_low=None, ad_span=None, left_limit=None, right_limit=None,
+            mo_time=None, range=None, nbins=None, gain=None, speed=None):
+        self.__set_parameters(
+            adc8on=adc8on, continuous=continuous, scanright=scanright,
+            step=step, ad_low=ad_low, ad_span=ad_span, left_limit=left_limit,
+            right_limit=right_limit, mo_time=mo_time, range=range, nbins=nbins,
+            gain=gain, speed=speed
+        )
+
+    def __set_parameters(self, **kwargs):
         """Sends Sonar head command with new properties if needed.
 
         If initialized, arguments are compared to current properties in order
@@ -92,9 +122,112 @@ class Sonar(object):
         Args:
             ...
         """
-        pass
+        # Set sonar properties.
+        for key, value in kwargs.iteritems():
+            if value is not None:
+                self.__setattr__(key, value)
 
-    def scan(self, feedback_callback, complete_callback, **kwargs):
+        # Construct the HdCtrl bytes to control operation:
+        #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
+        #   Bit 1:  cont            0: sector-scan  1: continuous
+        #   Bit 2:  scanright       0: left         1: right
+        #   Bit 3:  invert          0: upright      1: inverted
+        #   Bit 4:  motoff          0: on           1: off
+        #   Bit 5:  txoff           0: on           1: off (for testing)
+        #   Bit 6:  spare           0: default      1: N/A
+        #   Bit 7:  chan2           0: default      1: N/A
+        #   Bit 8:  raw             0: N/A          1: default
+        #   Bit 9:  hasmot          0: lol          1: has a motor (always)
+        #   Bit 10: applyoffset     0: default      1: heading offset
+        #   Bit 11: pingpong        0: default      1: side-scanning sonar
+        #   Bit 12: stareLLim       0: default      1: N/A
+        #   Bit 13: ReplyASL        0: N/A          1: default
+        #   Bit 14: ReplyThr        0: default      1: N/A
+        #   Bit 15: IgnoreSensor    0: default      1: emergencies
+        hd_ctrl = bitstring.pack(
+            "bool, bool, bool, bool, 0b000011001000",
+            self.adc8on, self.continuous, self.scanright, self.inverted
+        )
+
+        # Set the sonar type: 0x11 for DST.
+        hd_type = bitstring.pack("0x11")
+
+        # TX/RX transmitter constants: N/A to DST so fill with 15 zero bytes.
+        # TX pulse length: N/A to DST so fill with 2 zero bytes.
+        tx_rx = bitstring.BitStream(144)
+
+        # Range scale does not control the sonar, only provides a way to note
+        # the current settings in a human readable format.
+        # The lower 14 bits are the range scale * 10 units and the higher 2
+        # bits are coded units:
+        #   0: meters
+        #   1: feet
+        #   2: fathoms
+        #   3: yards
+        range_scale = bitstring.pack("uintle:16", int(self.range * 10))
+
+        # Left/right angles limits are in 1/16th of a gradian.
+        left_limit = bitstring.pack("uintle:16", self.left_limit)
+        right_limit = bitstring.pack("uintle:16", self.right_limit)
+
+        # Set the mapping of the received sonar echo amplitudes.
+        # If the ADC is set to 8-bit, MAX = 255 else MAX = 15.
+        # ADLow = MAX * low / 80 where low is the desired minimum amplitude.
+        # ADSpan = MAX * range / 80 where range is the desired amplitude range.
+        # The full range is between ADLow and ADLow + ADSpan.
+        MAX_SIZE = 255 if self.adc8on else 15
+        ad_low = bitstring.pack("uint:8", int(MAX_SIZE * self.ad_low / 80))
+        ad_span = bitstring.pack("uint:8", int(MAX_SIZE * self.ad_span / 80))
+
+        # Set the initial gain of each channel of the sonar receiver.
+        # The gain ranges from 0 to 210.
+        _mapped_gain = int(self.gain * 210)
+        gain = bitstring.pack("uint:8, uint:8", _mapped_gain, _mapped_gain)
+
+        # Slope setting is not applicable to DST: fill 4 bytes with zeroes.
+        slope = bitstring.BitStream(32)
+
+        # Set the high speed limit of the motor in units of 10 microseconds.
+        mo_time = bitstring.pack("uint:8", self.mo_time)
+
+        # Set the step angle size in 1/16th of a gradian.
+        #   32: low resolution
+        #   16: medium resolution
+        #   8: high resolution
+        step = bitstring.pack("uint:8", self.step)
+
+        # ADInterval defines the sampling interval of each bin and is in units
+        # of 640 nanoseconds.
+        nbins = bitstring.pack("uintle:16", self.nbins)
+        _interval = int(2 * self.range / self.speed / self.nbins / 640e-9)
+        ad_interval = bitstring.pack("uintle:16", _interval)
+
+        # Factory defaults. Don't ask.
+        max_ad_buf = bitstring.pack("uintle:16", 500)
+        lockout = bitstring.pack("uintle:16", 100)
+        minor_axis = bitstring.pack("uintle:16", 1600)
+        major_axis = bitstring.pack("uint:8", 1)
+
+        # Ctl2 is for testing.
+        ctl2 = bitstring.pack("uint:8", 0)
+
+        # Special devices setting. Should be left blank.
+        scanz = bitstring.pack("uint:8, uint:8", 0, 0)
+
+        # Order bitstream.
+        bitstream = (
+            hd_ctrl, hd_type, tx_rx, range_scale, left_limit, right_limit,
+            ad_span, ad_low, gain, slope, mo_time, step, ad_interval, nbins,
+            max_ad_buf, lockout, minor_axis, major_axis, ctl2, scanz
+        )
+
+        payload = bitstring.BitStream()
+        for chunk in bitstream:
+            payload.append(chunk)
+
+        self.conn.send(Message.HEAD_COMMAND, payload)
+
+    def scan(self, **kwargs):
         """Sends scan command.
 
         This method is blocking but calls feedback_callback at every reply with
@@ -112,7 +245,18 @@ class Sonar(object):
             kwargs: Key-word arguments to pass to update before scanning.
         """
         # Update scan settings.
-        self.params(**kwargs)
+        if kwargs:
+            self.set(**kwargs)
+
+        _time = datetime.datetime.now().time()
+        current_millis = int(datetime.timedelta(
+            _time.hour, _time.minute, _time.second, _time.microsecond
+        ).total_seconds() * 1000)
+        print "poop"
+        payload = bitstring.pack("uintle:32", current_millis)
+        print "lol"
+        self.conn.send(Message.SEND_DATA, payload)
+        print "ca va"
 
     def reboot(self):
         """Reboots Sonar."""
@@ -154,4 +298,4 @@ if __name__ == '__main__':
         print "REBOOTING SONAR..."
         sonar.reboot()
         print "ON TIME:", sonar.on_time
-        print sonar.get(Message.ALIVE)
+        sonar.scan()
