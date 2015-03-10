@@ -130,10 +130,11 @@ class Sonar(object):
         Raises:
             SonarNotFound: Sonar port could not be opened.
         """
-        try:
-            self.conn = Socket(self.port)
-        except OSError:
-            raise exceptions.SonarNotFound(self.port)
+        if not self.conn:
+            try:
+                self.conn = Socket(self.port)
+            except OSError:
+                raise exceptions.SonarNotFound(self.port)
 
         # Update properties.
         self.initialized = True
@@ -156,7 +157,7 @@ class Sonar(object):
 
     def close(self):
         """Closes sonar connection."""
-        self.reboot()
+        self.send(Message.REBOOT)
         self.conn.close()
         self.initialized = False
 
@@ -431,7 +432,7 @@ class Sonar(object):
             SonarNotInitialized: Sonar is not initialized.
         """
         self.send(Message.REBOOT)
-        self.update()
+        self.open()
 
     def update(self):
         """Updates Sonar states from mtAlive message.
