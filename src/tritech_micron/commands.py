@@ -2,7 +2,6 @@
 
 """Tritech Micron Sonar commands."""
 
-import struct
 import bitstring
 
 __author__ = "Anass Al-Wohoush, Erin Havens"
@@ -22,6 +21,7 @@ class Command(object):
         """
         self.id = id
         self.payload = payload if payload else bitstring.BitStream()
+        self.size = (self.payload.length / 8) + 8
 
     def to_string(self):
         """Constructs corresponding string of bytes to send to sonar.
@@ -29,20 +29,20 @@ class Command(object):
         Returns:
             String representation of data.
         """
-        header = "@"
-        tx_node = chr(0xFF)
-        rx_node = chr(0x02)
-        message_id = chr(self.id)
-        sequence = chr(0x80)
-        node = chr(0x02)
-        line_feed = chr(0x0A)
+        ascii_size = map(lambda x: hex(ord(x)), "{:04X}".format(self.size))
+        hex_size = bitstring.pack(", ".join(ascii_size))
+        values = {
+            "id": self.id,
+            "hex": hex_size,
+            "bin": self.size,
+            "bytes_left": self.size - 5,
+            "payload_length": self.payload.length,
+            "payload": self.payload
+        }
 
-        _size = (self.payload.length + 8) / 8
-        hex_size = "{:0>4}".format(hex(_size)[2:])
-        bin_size = struct.pack("<h", _size)
-        bytes_left = chr(_size - 5)
-
-        return "".join((
-            header, hex_size, bin_size, tx_node, rx_node, bytes_left,
-            message_id, self.payload.tobytes(), sequence, node, line_feed
-        ))
+        format = (
+            "0x40, bits:32=hex, uintle:16=bin, 0xFF, 0x02, uint:8=bytes_left,"
+            "uint:8=id, 0x80, 0x02, bits:payload_length=payload, 0x0A"
+        )
+        message = bitstring.pack(format, **values)
+        return message.tobytes()
