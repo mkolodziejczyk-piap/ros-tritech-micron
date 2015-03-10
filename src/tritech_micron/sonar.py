@@ -346,8 +346,9 @@ class Sonar(object):
         # ADInterval defines the sampling interval of each bin and is in units
         # of 640 nanoseconds.
         nbins = bitstring.pack("uintle:16", self.nbins)
-        _interval = int(2 * self.range / self.speed / self.nbins / 640e-9)
-        ad_interval = bitstring.pack("uintle:16", _interval)
+        _interval = 2 * self.range / self.speed / self.nbins / 640e-9
+        _interval = _interval + 1 if _interval % 2 else _interval
+        ad_interval = bitstring.pack("uintle:16", int(_interval))
 
         # Factory defaults. Don't ask.
         max_ad_buf = bitstring.pack("uintle:16", 500)
