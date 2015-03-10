@@ -415,13 +415,8 @@ class Sonar(object):
         if kwargs:
             self.set(**kwargs)
 
-        # Compute current time in milliseconds.
-        t = datetime.datetime.now().time()
-        current_millis = int(
-            ((t.hour * 60 + t.minute) * 60 + t.second) * 1000 +
-            t.microsecond / 1000
-        )
-        payload = bitstring.pack("uintle:32", current_millis)
+        # Pad current time in milliseconds with zeroes since N/A.
+        payload = bitstring.pack("pad:32")
 
         # Send command.
         self.send(Message.SEND_DATA, payload)
