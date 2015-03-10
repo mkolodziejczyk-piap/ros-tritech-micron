@@ -331,7 +331,7 @@ class Sonar(object):
         _mapped_gain = int(self.gain * 210)
         gain = bitstring.pack("uint:8, uint:8", _mapped_gain, _mapped_gain)
 
-        # Slope setting is not applicable to DST: fill 4 bytes with zeroes.
+        # Slope setting is N/A to DST: fill 4 bytes with zeroes.
         slope = bitstring.BitStream(32)
 
         # Set the high speed limit of the motor in units of 10 microseconds.
@@ -381,7 +381,7 @@ class Sonar(object):
         self.send(Message.HEAD_COMMAND, payload)
         self.scanright = not self.scanright
 
-    def scan(self, **kwargs):
+    def scan(self, feedback_callback, complete_callback, **kwargs):
         """Sends scan command.
 
         This method is blocking but calls feedback_callback at every reply with
@@ -420,6 +420,130 @@ class Sonar(object):
 
         # Send command.
         self.send(Message.SEND_DATA, payload)
+
+        while True:
+            # Get the current heading data.
+            data = self.get(Message.HEAD_DATA).payload
+
+            # Get the total number of bytes.
+            count = data.read(16).uintle
+
+            # Get the device type.
+            device_type = data.read(8).hex
+
+            # Get the head status byte:
+            #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
+            #   Bit 1:  'MotErr'. Motor has lost sync, re-send Parameters.
+            #   Bit 2:  'PrfSyncErr'. Always 0.
+            #   Bit 3:  'PrfPingErr'. Always 0.
+            #   Bit 4:  Whether adc8on is enabled.
+            #   Bit 5:  RESERVED (ignore).
+            #   Bit 6:  RESERVED (ignore).
+            #   Bit 7:  Message appended after last packet data reply.
+            _head_status = data.read(8)
+
+            # Get the sweep code. Its value should correspond to:
+            #   0: Scanning normal.
+            #   1: Scan at left limit.
+            #   2: Scan at right limit.
+            #   3: RESERVED (ignore).
+            #   4: RESERVED (ignore)
+            #   5: Scan at center position.
+            sweep = data.read(8).uint
+
+            # Get the HdCtrl bytes to control operation:
+            #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
+            #   Bit 1:  cont            0: sector-scan  1: continuous
+            #   Bit 2:  scanright       0: left         1: right
+            #   Bit 3:  invert          0: upright      1: inverted
+            #   Bit 4:  motoff          0: on           1: off
+            #   Bit 5:  txoff           0: on           1: off (for testing)
+            #   Bit 6:  spare           0: default      1: N/A
+            #   Bit 7:  chan2           0: default      1: N/A
+            #   Bit 8:  raw             0: N/A          1: default
+            #   Bit 9:  hasmot          0: lol          1: has a motor (always)
+            #   Bit 10: applyoffset     0: default      1: heading offset
+            #   Bit 11: pingpong        0: default      1: side-scanning sonar
+            #   Bit 12: stareLLim       0: default      1: N/A
+            #   Bit 13: ReplyASL        0: N/A          1: default
+            #   Bit 14: ReplyThr        0: default      1: N/A
+            #   Bit 15: IgnoreSensor    0: default      1: emergencies
+            # Should be the same as what was sent so ignore for now.
+            hd_ctrl = data.read(16)
+            adc8on = hd_ctrl[0]
+            continuous = hd_ctrl[1]
+            scanright = hd_ctrl[2]
+            inverted = hd_ctrl[3]
+
+            # Range scale.
+            # The lower 14 bits are the range scale * 10 units and the higher 2
+            # bits are coded units:
+            #   0: meters
+            #   1: feet
+            #   2: fathoms
+            #   3: yards
+            # Only the metric system is implemented for now, because it is
+            # better.
+            range = data.read(16).uintle / 10.0
+
+            # TX/RX transmitter constants: N/A to DST.
+            tx_rx = data.read(32)
+
+            # The gain ranges from 0 to 210.
+            gain = data.read(8).uintle / 210.0
+
+            # Slope setting is N/A to DST.
+            slope = data.read(16)
+
+            # If the ADC is set to 8-bit, MAX = 255 else MAX = 15.
+            # ADLow = MAX * low / 80 where low is the desired minimum
+            #   amplitude.
+            # ADSpan = MAX * range / 80 where range is the desired amplitude
+            #   range.
+            # The full range is between ADLow and ADLow + ADSpan.
+            MAX_SIZE = 255 if adc8on else 15
+            ad_span = data.read(8).uintle
+            ad_low = data.read(8).uintle
+            min_intensity = ad_low * 80.0 / MAX_SIZE
+            span_intensity = ad_span * 80.0 / MAX_SIZE
+            max_intensity = min_intensity + span_intensity
+
+            # Heading offset is ignored.
+            heading_offset = data.read(8).uint
+
+            # ADInterval defines the sampling interval of each bin and is in
+            # units of 640 nanoseconds.
+            ad_interval = data.read(16).uintle
+
+            # Left/right angles limits are in 1/16th of a gradian.
+            left_limit = Sonar._to_radians(data.read(16).uintle)
+            right_limit = Sonar._to_radians(data.read(16).uintle)
+
+            # Step angle size.
+            step = Sonar._to_radians(data.read(8).uint)
+
+            # Heading is in units of 1/16th of a gradian.
+            heading = Sonar._to_radians(data.read(16).uintle)
+            self.heading = heading
+
+            # Dbytes is the number of bytes with data to follow.
+            dbytes = data.read(16).uintle
+
+            # Get bins.
+            _size = 8 if adc8on else 4
+            _range = range(dbytes) if adc8on else range(dbytes * 2)
+            bins = [data.read(_size).uintle for i in _range]
+
+            # Run feedback callback.
+            proceed = feedback_callback(heading, bins)
+
+            # Proceed or not.
+            if (not proceed or (scanright and sweep == 2) or
+                    (not scanright and sweep == 3)):
+                break
+
+        # Run completion callback.
+        complete_callback(self.heading)
 
     def reboot(self):
         """Reboots Sonar.
@@ -488,9 +612,15 @@ class Sonar(object):
 
 
 if __name__ == '__main__':
+    def feedback_callback(heading, bins):
+        print heading, bins
+
+    def complete_callback(heading):
+        print "DONE", heading
+
     with Sonar("/dev/tty.usbserial") as sonar:
         print "ON TIME:", sonar.on_time
         print "REBOOTING SONAR..."
         sonar.reboot()
         print "ON TIME:", sonar.on_time
-        sonar.scan()
+        sonar.scan(feedback_callback, complete_callback)
