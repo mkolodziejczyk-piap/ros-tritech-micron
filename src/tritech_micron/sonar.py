@@ -2,24 +2,74 @@
 
 """Tritech Micron Sonar."""
 
-import struct
+import math
 import datetime
 import bitstring
+import exceptions
 from socket import Socket
 from messages import Message
 
 __author__ = "Anass Al-Wohoush"
-__version__ = "0.5.0"
+__version__ = "0.7.0"
+
+
+class Resolution(object):
+
+    """Sonar mechanical resolution enumeration.
+
+    The mechanical resolution is the angle the step motor rotates per scan line
+    in units of 1/16th of a gradian. A higher resolution slows down the scan.
+    Set as such:
+
+        with Sonar() as sonar:
+            sonar.set(step=Resolution.LOW)
+    """
+
+    LOW = 32
+    MEDIUM = 16
+    HIGH = 8
+    ULTIMATE = 4
 
 
 class Sonar(object):
 
     """Tritech Micron Sonar.
 
+    In order for attribute changes to immediately be reflected on the device,
+    use the set() method with the appropriate keyword.
+
+    For example, to setup a 20 m sector scan:
+
+        with Sonar() as sonar:
+            sonar.set(continuous=False, range=20)
+
     Attributes:
-        adc8on: 8-bit resolution ADC is on.
+        ad_high: Amplitude in db to be mapped to max intensity (0-80 db).
+        ad_low: Amplitude in dB to be mapped to 0 intensity (0-80 db).
+        adc8on: True if 8-bit resolution ADC, otherwise 4-bit.
+        centred: Whether the sonar motor is centred.
         conn: Serial connection.
-        ...
+        continuous: True if continuous scan, otherwise sector scan.
+        gain: Initial gain percentage (0.00-1.00).
+        has_cfg: Whether the sonar has acknowledged with mtBBUserData.
+        heading: Current sonar heading in radians.
+        initialized: Whether the sonar has been initialized with parameters.
+        inverted: Whether the sonar is mounted upside down.
+        left_limit: Left limit of sector scan in radians.
+        mo_time: High speed limit of the motor in units of 10 microseconds.
+        motoring: Whether the sonar motor is moving.
+        motor_on: Whether device is powered and motor is primed.
+        nbins: Number of bins per scan line.
+        no_params: Whether the sonar needs parameters before it can scan.
+        on_time: Sonar up time.
+        port: Serial port.
+        range: Scan range in meters.
+        recentering: Whether the sonar is recentering its motor.
+        right_limit: Right limit of sector scans in radians.
+        scanning: Whether the sonar is scanning.
+        scanright: Whether the sonar scanning direction is clockwise.
+        speed: Speed of sound in medium.
+        step: Mechanical resolution (Resolution enumeration).
     """
 
     def __init__(self, port="/dev/sonar", inverted=False):
@@ -27,54 +77,86 @@ class Sonar(object):
 
         Args:
             port: Serial port.
+            inverted: Whether the sonar is mounted upside down.
         """
+
+        self.port = port
+        self.conn = None
         self.initialized = False
-        self.inverted = True
 
-        self.adc8on = True
-        self.continuous = True
-        self.scanright = True
-        self.step = 16
-        self.ad_low = 0
-        self.ad_span = 80
-        self.left_limit = 5600
-        self.right_limit = 800
-        self.mo_time = 25
-        self.range = 20
-        self.nbins = 1500
-        self.gain = 0.40
-        self.speed = 1500.0
+        # Parameters.
+        self.ad_high = None
+        self.ad_low = None
+        self.adc8on = None
+        self.continuous = None
+        self.gain = None
+        self.inverted = inverted
+        self.left_limit = None
+        self.mo_time = None
+        self.nbins = None
+        self.range = None
+        self.right_limit = None
+        self.scanright = None
+        self.speed = None
+        self.step = None
 
-        self.on_time = datetime.timedelta(0)
-        self.heading = None
-        self.recentering = False
+        # Head info.
         self.centred = None
-        self.motoring = False
-        self.motor_on = False
-        self.clockwise = None
-        self.scanning = False
-        self.no_params = True
-        self.has_cfg = False
-
-        self.conn = Socket(port)
+        self.has_cfg = None
+        self.heading = None
+        self.motor_on = None
+        self.motoring = None
+        self.no_params = None
+        self.on_time = datetime.timedelta(0)
+        self.recentering = None
+        self.scanning = None
 
     def __enter__(self):
-        """Initializes sonar for first use."""
-        self.init()
+        """Initializes sonar for first use.
+
+        Raises:
+            SonarNotFound: Sonar port could not be opened.
+        """
+        self.open()
         return self
 
     def __exit__(self, type, value, traceback):
         """Cleans up."""
         self.close()
 
-    def init(self):
-        """Initializes sonar."""
-        self.update()
-        self.set()
+    def open(self):
+        """Initializes sonar connection and sets default properties.
+
+        Raises:
+            SonarNotFound: Sonar port could not be opened.
+        """
+        try:
+            self.conn = Socket(self.port)
+        except OSError:
+            raise exceptions.SonarNotFound(self.port)
+
+        # Update properties.
         self.initialized = True
+        self.update()
+
+        # Wait until sonar is done centering.
+        while not self.centred or self.motoring:
+            self.update()
+
+        # Set default properties.
+        self.set(
+            adc8on=True, continuous=True, scanright=True, step=Resolution.LOW,
+            ad_low=0, ad_high=80, left_limit=5600, right_limit=800, mo_time=25,
+            range=20, nbins=200, gain=0.40, speed=1500.0, inverted=True
+        )
+
+        # Wait until sonar acknowledges properties.
+        while not self.has_cfg or self.no_params:
+            self.update()
 
     def close(self):
         """Closes sonar connection."""
+        self.reboot()
         self.conn.close()
         self.initialized = False
 
@@ -85,47 +167,107 @@ class Sonar(object):
             message: Message to expect (default: first to come in).
 
         Returns:
-            Reply.
+            Reply if successful, None otherwise.
+
+        Raises:
+            SonarNotInitialized: Attempt reading serial without opening port.
         """
-        while True:
-            reply = self.conn.get_reply()
-            if reply.id == Message.ALIVE:
-                self._update_state(reply)
+        if not self.initialized:
+            raise exceptions.SonarNotInitialized(message)
 
-            if message is not None and reply.id == message:
-                return reply
+        try:
+            while True:
+                reply = self.conn.get_reply()
+                if reply.id == Message.ALIVE:
+                    self.__update_state(reply)
+                if message is None or reply.id == message:
+                    return reply
+        except exceptions.PacketCorrupted:
+            return None
 
-    def send(self, command):
+    def send(self, command, payload=None):
         """Sends command and returns reply.
 
         Args:
             command: Command to send.
+
+        Raises:
+            SonarNotInitialized: Attempt sending command without opening port.
         """
-        self.conn.send(command)
+        if not self.initialized:
+            raise exceptions.SonarNotInitialized(command, payload)
+
+        self.conn.send(command, payload)
 
     def set(self, adc8on=None, continuous=None, scanright=None, step=None,
-            ad_low=None, ad_span=None, left_limit=None, right_limit=None,
-            mo_time=None, range=None, nbins=None, gain=None, speed=None):
-        self.__set_parameters(
-            adc8on=adc8on, continuous=continuous, scanright=scanright,
-            step=step, ad_low=ad_low, ad_span=ad_span, left_limit=left_limit,
-            right_limit=right_limit, mo_time=mo_time, range=range, nbins=nbins,
-            gain=gain, speed=speed
-        )
-
-    def __set_parameters(self, **kwargs):
+            ad_low=None, ad_high=None, left_limit=None, right_limit=None,
+            mo_time=None, range=None, nbins=None, gain=None, speed=None,
+            inverted=None):
         """Sends Sonar head command with new properties if needed.
+
+        Only the parameters specified will be modified.
 
         If initialized, arguments are compared to current properties in order
         to see if sending the command is necessary.
 
         Args:
-            ...
+            ad_low: Amplitude in dB to be mapped to 0 intensity (0-80 db).
+            ad_high: Amplitude in db to be mapped to max intensity (0-80 db).
+            adc8on: True if 8-bit resolution ADC, otherwise 4-bit.
+            continuous: True if continuous scan, otherwise sector scan.
+            gain: Initial gain percentage (0.00-1.00).
+            inverted: Whether the sonar is mounted upside down.
+            left_limit: Left limit of sector scan in radians.
+            mo_time: High speed limit of the motor in units of 10 microseconds.
+            nbins: Number of bins per scan line.
+            range: Scan range in meters.
+            right_limit: Right limit of sector scans in radians.
+            scanright: Whether the sonar scanning direction is clockwise.
+            speed: Speed of sound in medium.
+            step: Mechanical resolution (Resolution enumeration).
+
+        Raises:
+            SonarNotInitialized: Sonar is not initialized.
         """
-        # Set sonar properties.
+        if not self.initialized:
+            raise exceptions.SonarNotInitialized()
+
+        self.__set_parameters(
+            adc8on=adc8on, continuous=continuous, scanright=scanright,
+            step=step, ad_low=ad_low, ad_high=ad_high, left_limit=left_limit,
+            right_limit=right_limit, mo_time=mo_time, range=range, nbins=nbins,
+            gain=gain, speed=speed, inverted=inverted
+        )
+
+    def __set_parameters(self, **kwargs):
+        """Sends Sonar head command to set sonar properties.
+
+        Only the parameters specified will be modified.
+
+        If initialized, arguments are compared to current properties in order
+        to see if sending the command is necessary.
+
+        Args:
+            See set().
+        """
+        # Set and compare sonar properties.
+        necessary, only_reverse = False, True
         for key, value in kwargs.iteritems():
             if value is not None:
-                self.__setattr__(key, value)
+                if self.__getattribute__(key) != value:
+                    self.__setattr__(key, value)
+                    necessary = True
+                    if key != "scanright":
+                        only_reverse = False
+
+        # Return if unnecessary.
+        if not necessary and self.initialized:
+            return
+
+        # Return if only switching the motor's direction is necessary.
+        if only_reverse:
+            self.scanright = not self.scanright
+            return self.reverse()
 
         # Construct the HdCtrl bytes to control operation:
         #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
@@ -164,11 +306,14 @@ class Sonar(object):
         #   1: feet
         #   2: fathoms
         #   3: yards
+        # Only the metric system is implemented for now, because it is better.
         range_scale = bitstring.pack("uintle:16", int(self.range * 10))
 
         # Left/right angles limits are in 1/16th of a gradian.
-        left_limit = bitstring.pack("uintle:16", self.left_limit)
-        right_limit = bitstring.pack("uintle:16", self.right_limit)
+        _left_angle = Sonar._to_sonar_angles(self.left_limit)
+        _right_angle = Sonar._to_sonar_angles(self.right_limit)
+        left_limit = bitstring.pack("uintle:16", _left_angle)
+        right_limit = bitstring.pack("uintle:16", _right_angle)
 
         # Set the mapping of the received sonar echo amplitudes.
         # If the ADC is set to 8-bit, MAX = 255 else MAX = 15.
@@ -177,7 +322,8 @@ class Sonar(object):
         # The full range is between ADLow and ADLow + ADSpan.
         MAX_SIZE = 255 if self.adc8on else 15
         ad_low = bitstring.pack("uint:8", int(MAX_SIZE * self.ad_low / 80))
-        ad_span = bitstring.pack("uint:8", int(MAX_SIZE * self.ad_span / 80))
+        _ad_diff = self.ad_high - self.ad_low
+        ad_span = bitstring.pack("uint:8", int(MAX_SIZE * _ad_diff / 80))
 
         # Set the initial gain of each channel of the sonar receiver.
         # The gain ranges from 0 to 210.
@@ -225,7 +371,13 @@ class Sonar(object):
         for chunk in bitstream:
             payload.append(chunk)
 
-        self.conn.send(Message.HEAD_COMMAND, payload)
+        self.send(Message.HEAD_COMMAND, payload)
+
+    def reverse(self):
+        """Instantaneously reverse scan direction."""
+        payload = bitstring.pack("0x0F")
+        self.send(Message.HEAD_COMMAND, payload)
+        self.scanright = not self.scanright
 
     def scan(self, **kwargs):
         """Sends scan command.
@@ -234,41 +386,63 @@ class Sonar(object):
         the heading and a new dataset and complete_callback with the current
         heading when scan is complete.
 
+        To stop a scan midway, simply have the feedback_callback return False.
+
         Args:
             feedback_callback: Callback for feedback.
                 Called with args=(heading, bins)
-                where heading is an int in 1/16th Gradians
+                where heading is an int in radians
                 and bins is an int array with the intensity at every bin.
-            complete_callback: Callback on completion.
+                This callback should return True if the scan should proceed and
+                False to halt it.
+            complete_callback: Callback on completion or halt.
                 Called with args=(heading,)
-                where heading is an int in 1/16th Gradians.
+                where heading is an int in radians.
             kwargs: Key-word arguments to pass to update before scanning.
+
+        Raises:
+            SonarNotInitialized: Sonar is not initialized.
+            SonarNotConfigured: Sonar is not configured for scanning.
         """
+        # Verify sonar is ready to scan.
+        self.update()
+        if self.no_params or not self.has_cfg:
+            raise exceptions.SonarNotConfigured(self.no_params, self.has_cfg)
+
         # Update scan settings.
         if kwargs:
             self.set(**kwargs)
 
-        _time = datetime.datetime.now().time()
-        current_millis = int(datetime.timedelta(
-            _time.hour, _time.minute, _time.second, _time.microsecond
-        ).total_seconds() * 1000)
-        print "poop"
+        # Compute current time in milliseconds.
+        t = datetime.datetime.now().time()
+        current_millis = int(
+            ((t.hour * 60 + t.minute) * 60 + t.second) * 1000 +
+            t.microsecond / 1000
+        )
         payload = bitstring.pack("uintle:32", current_millis)
-        print "lol"
-        self.conn.send(Message.SEND_DATA, payload)
-        print "ca va"
+
+        # Send command.
+        self.send(Message.SEND_DATA, payload)
 
     def reboot(self):
-        """Reboots Sonar."""
-        self.conn.send(Message.REBOOT)
+        """Reboots Sonar.
+
+        Raises:
+            SonarNotInitialized: Sonar is not initialized.
+        """
+        self.send(Message.REBOOT)
         self.update()
 
     def update(self):
-        """Updates Sonar states from mtAlive message."""
-        reply = self.conn.get_reply(expected=Message.ALIVE)
-        self._update_state(reply)
+        """Updates Sonar states from mtAlive message.
 
-    def _update_state(self, alive):
+        Raises:
+            SonarNotInitialized: Sonar is not initialized.
+        """
+        reply = self.get(Message.ALIVE)
+        self.__update_state(reply)
+
+    def __update_state(self, alive):
         """Updates Sonar states from mtAlive message.
 
         Args:
@@ -277,9 +451,9 @@ class Sonar(object):
         payload = alive.payload
         payload.bytepos = 1
 
-        ms = struct.unpack("<L", payload.read(32).tobytes())[0]
-        self.on_time = datetime.timedelta(microseconds=ms * 1000)
-        self.heading = struct.unpack("<h", payload.read(16).tobytes())[0]
+        micros = payload.read(32).uintle * 1000
+        self.on_time = datetime.timedelta(microseconds=micros)
+        self.heading = Sonar._to_radians(payload.read(16).uintle)
 
         head_inf = payload.read(8)
         self.recentering = head_inf[0]
@@ -290,6 +464,30 @@ class Sonar(object):
         self.scanning = head_inf[5]
         self.no_params = head_inf[6]
         self.has_cfg = head_inf[7]
+
+    @classmethod
+    def _to_sonar_angles(cls, rad):
+        """Converts radians to units of 1/16th of a gradian.
+
+        Args:
+            rad: Angle in radians.
+
+        Returns:
+            Integral angle in units of 1/16th of a gradian.
+        """
+        return int(rad * 3200 / math.pi) % 6400
+
+    @classmethod
+    def _to_radians(cls, angle):
+        """Converts units of 1/16th of a gradian to radians.
+
+        Args:
+            rad: Angle in units of 1/16th of a gradian.
+
+        Returns:
+            Angle in radians.
+        """
+        return angle / 3200.0 * math.pi
 
 
 if __name__ == '__main__':
