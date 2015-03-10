@@ -14,3 +14,18 @@ class PacketIncomplete(Exception):
 class PacketCorrupted(Exception):
     """Packet is corrupt."""
     pass
+
+
+class SonarNotConfigured(Exception):
+    """Sonar is not configured for scanning."""
+    pass
+
+
+class SonarNotFound(Exception):
+    """Sonar port could not be found."""
+    pass
+
+
+class SonarNotInitialized(Exception):
+    """Sonar not initialized."""
+    pass
