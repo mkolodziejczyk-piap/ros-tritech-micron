@@ -16,7 +16,14 @@ __version__ = "0.0.1"
 
 
 def sonar_angle_to_rad(angle):
-    """Converts angles in units of 1/16th of a gradian to radians."""
+    """Converts angles in units of 1/16th of a gradian to radians.
+
+    Args:
+        angle: Angle in 1/16th of a gradian.
+
+    Returns:
+        ANgle in radians.
+    """
     return float(angle) * np.pi / 3200
 
 
@@ -181,7 +188,11 @@ class Scan(object):
 def get_parameters():
     """Gets relevant ROS parameters into a named tuple.
 
-    Relevant properties are
+    Relevant properties are:
+        ~csv: Path to CSV log.
+        ~queue: Queue for sector scan message.
+        ~rate: Publishing rate in Hz.
+        ~frame: Frame name.
 
     Returns:
         Named tuple with the following properties:
@@ -260,6 +271,6 @@ if __name__ == "__main__":
     try:
         main(options.path, options.queue, options.rate, options.frame)
     except IOError:
-        rospy.logfatal("Could not find file specified")
+        rospy.logfatal("Could not find file specified.")
     except rospy.ROSInterruptException:
         pass
