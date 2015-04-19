@@ -4,12 +4,16 @@
 """Tritech Micron CSV to LaserScan."""
 
 import csv
+import math
 import sys
 import rospy
 import numpy as np
 from datetime import datetime
 from collections import namedtuple
+from geometry_msgs.msg import Point32
+from sensor_msgs.msg import ChannelFloat32
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import PointCloud
 
 __author__ = "Anass Al-Wohoush"
 __version__ = "0.0.1"
@@ -22,9 +26,25 @@ def sonar_angle_to_rad(angle):
         angle: Angle in 1/16th of a gradian.
 
     Returns:
-        ANgle in radians.
+        Angle in radians.
     """
     return float(angle) * np.pi / 3200
+    
+
+def slice_to_points(sonar_slice):
+    """ Convert a slice of sonar data to a list of points, one at each return
+    
+    Args:
+        sonar_slice: a Slice object
+        
+    Returns:
+        A list of geometry_msgs.msg.Point32
+    """
+    r_step = sonar_slice.range / sonar_slice.num_bins
+    x_unit = math.cos(sonar_angle_to_rad(sonar_slice.heading)) * r_step
+    y_unit = math.sin(sonar_angle_to_rad(sonar_slice.heading)) * r_step
+    return [Point32(x=x_unit*r, y=y_unit*r, z=0.) 
+            for r in range(1, sonar_slice.num_bins + 1)]
 
 
 class Slice(object):
@@ -185,6 +205,30 @@ class Scan(object):
             scan.intensities[index] = scan_slice.max_intensity
 
         return scan
+        
+    def to_point_cloud(self, frame):
+        """ Publishes the sonar data as a point cloud.
+        
+        Args:
+            frame: String, name of sensor frame.
+            
+        Returns:
+            geometry_msgs.msg.PointCloud
+        """
+        cloud = PointCloud()
+        
+        cloud.header.frame_id = frame
+        cloud.header.stamp = rospy.get_rostime()
+        cloud.points = [point for s in self.slices 
+            for point in slice_to_points(s)]
+            
+        channel = ChannelFloat32()
+        channel.name = "intensity"
+        channel.values = [intensity for s in self.slices 
+            for intensity in s.data]
+            
+        cloud.channels = [channel]
+        return cloud
 
 
 def get_parameters():
@@ -239,6 +283,7 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
     # Create publisher.
     full_pub = rospy.Publisher("sonar/full", LaserScan, queue_size=10)
     sector_pub = rospy.Publisher("sonar/sector", LaserScan, queue_size=10)
+    point_pub = rospy.Publisher("sonar/points", PointCloud, queue_size=10)
 
     rate = rospy.Rate(rate)  # Hz
 
@@ -266,7 +311,9 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
             laser_scan = scan.to_laser_scan(frame, queue=queue)
             if laser_scan:
                 sector_pub.publish(laser_scan)
-
+                
+            point_pub.publish(scan.to_point_cloud(frame))
+            
             rate.sleep()
 
 
