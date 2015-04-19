@@ -31,7 +31,7 @@ class Slice(object):
 
     """Scan slice."""
 
-    def __init__(self, row, min_distance=1, min_intensity=50):
+    def __init__(self, row, min_distance, min_intensity):
         """Constructs Slice object.
 
         Args:
@@ -63,7 +63,9 @@ class Slice(object):
         # Determine range of maximum intensity.
         min_range = int(min_distance / self.range * self.num_bins)
         data = [
-            intensity if intensity > min_intensity and index > min_range else 0
+            intensity
+            if intensity > min_intensity and index > min_range
+            else 0
             for index, intensity in enumerate(self.data)
         ]
         argmax = np.argmax(data)
@@ -193,6 +195,8 @@ def get_parameters():
         ~queue: Queue for sector scan message.
         ~rate: Publishing rate in Hz.
         ~frame: Frame name.
+        ~min_distance: Minimum distance in meters.
+        ~min_intensity: Minimum intensity.
 
     Returns:
         Named tuple with the following properties:
@@ -200,18 +204,24 @@ def get_parameters():
             queue: Queue for sector scan message.
             rate: Publishing rate in Hz.
             frame: Frame name.
+            min_distance: Minimum distance in meters.
+            min_intensity: Minimum intensity.
     """
-    options = namedtuple("Parameters", ["path", "queue", "rate", "frame"])
+    options = namedtuple("Parameters", [
+        "path", "queue", "rate", "frame", "min_distance", "min_intensity"
+    ])
 
     options.path = rospy.get_param("~csv", None)
     options.queue = rospy.get_param("~queue", 10)
     options.rate = rospy.get_param("~rate", 30)
     options.frame = rospy.get_param("~frame", "odom")
+    options.min_distance = rospy.get_param("~min_distance", 1)
+    options.min_intensity = rospy.get_param("~min_intensity", 50)
 
     return options
 
 
-def main(path, queue, rate, frame):
+def main(path, queue, rate, frame, min_distance, min_intensity):
     """Parses scan logs and publishes LaserScan messages at set frequency.
 
     This publishes on two topics:
@@ -223,6 +233,8 @@ def main(path, queue, rate, frame):
         queue: Queue for sector scan message.
         rate: Publishing rate in Hz.
         frame: Frame name.
+        min_distance: Minimum distance in meters.
+        min_intensity: Minimum intensity.
     """
     # Create publisher.
     full_pub = rospy.Publisher("sonar/full", LaserScan, queue_size=10)
@@ -242,7 +254,7 @@ def main(path, queue, rate, frame):
                 break
 
             # Parse row.
-            scan_slice = Slice(row, min_distance=1, min_intensity=50)
+            scan_slice = Slice(row, min_distance, min_intensity)
             scan.add(scan_slice)
 
             # Publish full scan.
@@ -269,7 +281,10 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     try:
-        main(options.path, options.queue, options.rate, options.frame)
+        main(
+            options.path, options.queue, options.rate, options.frame,
+            options.min_distance, options.min_intensity
+        )
     except IOError:
         rospy.logfatal("Could not find file specified.")
     except rospy.ROSInterruptException:
