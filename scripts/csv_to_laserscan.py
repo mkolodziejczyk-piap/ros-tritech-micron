@@ -145,8 +145,8 @@ class Scan(object):
         ).total_seconds()
 
         # Determine angular range.
-        angle_min = queued_slices[0].heading
-        angle_max = queued_slices[-1].heading
+        angle_min = 0 # hack
+        angle_max = 6400 # hack hack
         if angle_max < angle_min:
             angle_max += 6400
         scan.angle_min = sonar_angle_to_rad(angle_min)
@@ -158,7 +158,7 @@ class Scan(object):
         scan.range_min = 0.1
         scan.ranges = [
             scan_slice.max
-            for scan_slice in queued_slices
+            for scan_slice in sorted(queued_slices, key=lambda x: (x.heading % 6400)) # hack hack hack
         ]
         scan.intensities = [
             scan_slice.max_intensity
@@ -182,6 +182,8 @@ def main(path, queue, rate):
         next(info)
 
         for row in info:
+            if rospy.is_shutdown():
+                break
             scan_slice = Slice(*row)
             scan.add(scan_slice)
 
