@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron CSV to LaserScan."""
+"""Tritech Micron CSV to LaserScan and PointCloud."""
 
 import csv
 import math
@@ -15,8 +15,8 @@ from sensor_msgs.msg import ChannelFloat32
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import PointCloud
 
-__author__ = "Anass Al-Wohoush"
-__version__ = "0.0.1"
+__author__ = "Anass Al-Wohoush, Max Krogius"
+__version__ = "0.1.0"
 
 
 def sonar_angle_to_rad(angle):
@@ -29,22 +29,6 @@ def sonar_angle_to_rad(angle):
         Angle in radians.
     """
     return float(angle) * np.pi / 3200
-    
-
-def slice_to_points(sonar_slice):
-    """ Convert a slice of sonar data to a list of points, one at each return
-    
-    Args:
-        sonar_slice: a Slice object
-        
-    Returns:
-        A list of geometry_msgs.msg.Point32
-    """
-    r_step = sonar_slice.range / sonar_slice.num_bins
-    x_unit = math.cos(sonar_angle_to_rad(sonar_slice.heading)) * r_step
-    y_unit = math.sin(sonar_angle_to_rad(sonar_slice.heading)) * r_step
-    return [Point32(x=x_unit*r, y=y_unit*r, z=0.) 
-            for r in range(1, sonar_slice.num_bins + 1)]
 
 
 class Slice(object):
@@ -80,6 +64,9 @@ class Slice(object):
         # Direction is encoded as the third bit in the HDCtrl bytes.
         self.clockwise = self.hdctrl & 0b100 > 0
 
+        # Convert to Point32.
+        self.points = self.to_points()
+
         # Determine range of maximum intensity.
         min_range = int(min_distance / self.range * self.num_bins)
         data = [
@@ -95,6 +82,42 @@ class Slice(object):
     def __str__(self):
         """Returns string representation of Slice."""
         return str(self.heading)
+
+    def to_points(self):
+        """Converts a list of Point32, one for each return.
+
+        Returns:
+            A list of geometry_msgs.msg.Point32.
+        """
+        r_step = self.range / self.num_bins
+        x_unit = math.cos(sonar_angle_to_rad(self.heading)) * r_step
+        y_unit = math.sin(sonar_angle_to_rad(self.heading)) * r_step
+        return [
+            Point32(x=x_unit * r, y=y_unit * r, z=0.)
+            for r in range(1, self.num_bins + 1)
+        ]
+
+    def to_pointcloud(self, frame):
+        """ Publishes the sonar data as a point cloud.
+
+        Args:
+            frame: String, name of sensor frame.
+
+        Returns:
+            sensor_msgs.msg.PointCloud.
+        """
+        cloud = PointCloud()
+
+        cloud.header.frame_id = frame
+        cloud.header.stamp = rospy.get_rostime()
+        cloud.points = self.to_points()
+
+        channel = ChannelFloat32()
+        channel.name = "intensity"
+        channel.values = self.data
+
+        cloud.channels = [channel]
+        return cloud
 
 
 class Scan(object):
@@ -163,7 +186,7 @@ class Scan(object):
             queue: Queue size (0 means full scan).
 
         Returns:
-            LaserScan.
+            sensor_msgs.msg.LaserScan.
         """
         # Return nothing if empty.
         if len(self.slices) < queue or self.empty():
@@ -205,28 +228,32 @@ class Scan(object):
             scan.intensities[index] = scan_slice.max_intensity
 
         return scan
-        
-    def to_point_cloud(self, frame):
-        """ Publishes the sonar data as a point cloud.
-        
+
+    def to_pointcloud(self, frame):
+        """Publishes the sonar data as a point cloud.
+
         Args:
-            frame: String, name of sensor frame.
-            
+            frame: Name of sensor frame.
+
         Returns:
-            geometry_msgs.msg.PointCloud
+            sensor_msgs.msg.PointCloud.
         """
         cloud = PointCloud()
-        
+
         cloud.header.frame_id = frame
         cloud.header.stamp = rospy.get_rostime()
-        cloud.points = [point for s in self.slices 
-            for point in slice_to_points(s)]
-            
+        cloud.points = [
+            point for scan_slice in self.slices
+            for point in scan_slice.points
+        ]
+
         channel = ChannelFloat32()
         channel.name = "intensity"
-        channel.values = [intensity for s in self.slices 
-            for intensity in s.data]
-            
+        channel.values = [
+            intensity for scan_slice in self.slices
+            for intensity in scan_slice.data
+        ]
+
         cloud.channels = [channel]
         return cloud
 
@@ -238,7 +265,7 @@ def get_parameters():
         ~csv: Path to CSV log.
         ~queue: Queue for sector scan message.
         ~rate: Publishing rate in Hz.
-        ~frame: Frame name.
+        ~frame: Name of sensor frame.
         ~min_distance: Minimum distance in meters.
         ~min_intensity: Minimum intensity.
 
@@ -247,7 +274,7 @@ def get_parameters():
             path: Path to CSV log.
             queue: Queue for sector scan message.
             rate: Publishing rate in Hz.
-            frame: Frame name.
+            frame: Name of sensor frame.
             min_distance: Minimum distance in meters.
             min_intensity: Minimum intensity.
     """
@@ -271,12 +298,13 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
     This publishes on two topics:
         /sonar/full: A full 360 degree scan.
         /sonar/sector: A queued scan with the past few headings.
+        /sonar/points: Point cloud of the latest scan slice.
 
     Args:
         path: Path to CSV log.
         queue: Queue for sector scan message.
         rate: Publishing rate in Hz.
-        frame: Frame name.
+        frame: Name of sensor frame.
         min_distance: Minimum distance in meters.
         min_intensity: Minimum intensity.
     """
@@ -311,9 +339,9 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
             laser_scan = scan.to_laser_scan(frame, queue=queue)
             if laser_scan:
                 sector_pub.publish(laser_scan)
-                
-            point_pub.publish(scan.to_point_cloud(frame))
-            
+
+            point_pub.publish(scan_slice.to_pointcloud(frame))
+
             rate.sleep()
 
 
