@@ -35,7 +35,7 @@ class Slice(object):
 
     """Scan slice."""
 
-    def __init__(self, row, min_distance, min_intensity):
+    def __init__(self, row, min_distance, min_intensity, threshold):
         """Constructs Slice object.
 
         Args:
@@ -76,8 +76,16 @@ class Slice(object):
             for index, intensity in enumerate(self.data)
         ]
         argmax = np.argmax(data)
-        self.max = argmax * self.range / self.num_bins
+        max_intensity = self.data[argmax]
+        self.max = (argmax + 1) * self.range / self.num_bins
         self.max_intensity = self.data[argmax]
+	
+	# Choose first value over threshold
+        for i in range(len(data)):
+            if data[i] > threshold:
+                self.max = (i + 1) * self.range / self.num_bins  
+                self.max_intensity = self.data[i]
+                break
 
     def __str__(self):
         """Returns string representation of Slice."""
@@ -133,6 +141,7 @@ class Scan(object):
         self.right_limit = None
         self.clockwise = None
         self.slices = []
+        self.time = rospy.get_rostime()
 
     def empty(self):
         """Returns whether the scan is empty."""
@@ -194,9 +203,6 @@ class Scan(object):
 
         scan = LaserScan()
 
-        # Header.
-        scan.header.frame_id = frame
-        scan.header.stamp = rospy.get_rostime()
 
         # Get latest N slices.
         queued_slices = sorted(
@@ -210,6 +216,11 @@ class Scan(object):
         scan.scan_time = (
             queued_slices[-1].timestamp - queued_slices[0].timestamp
         ).total_seconds()
+
+        # Header.
+        scan.header.frame_id = frame
+        self.time += rospy.Duration.from_sec(scan.time_increment)
+        scan.header.stamp = self.time
 
         # Set angular range.
         scan.angle_min = sonar_angle_to_rad(0)
@@ -279,7 +290,7 @@ def get_parameters():
             min_intensity: Minimum intensity.
     """
     options = namedtuple("Parameters", [
-        "path", "queue", "rate", "frame", "min_distance", "min_intensity"
+        "path", "queue", "rate", "frame", "min_distance", "min_intensity", "width", "threshold"
     ])
 
     options.path = rospy.get_param("~csv", None)
@@ -288,11 +299,13 @@ def get_parameters():
     options.frame = rospy.get_param("~frame", "odom")
     options.min_distance = rospy.get_param("~min_distance", 1)
     options.min_intensity = rospy.get_param("~min_intensity", 50)
+    options.width = rospy.get_param("~width", 5)
+    options.threshold = rospy.get_param("~threshold", 0.5)
 
     return options
 
 
-def main(path, queue, rate, frame, min_distance, min_intensity):
+def main(path, queue, rate, frame, min_distance, min_intensity, threshold):
     """Parses scan logs and publishes LaserScan messages at set frequency.
 
     This publishes on two topics:
@@ -307,6 +320,7 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
         frame: Name of sensor frame.
         min_distance: Minimum distance in meters.
         min_intensity: Minimum intensity.
+        threshold: Threshold for intensity
     """
     # Create publisher.
     full_pub = rospy.Publisher("sonar/full", LaserScan, queue_size=10)
@@ -327,7 +341,7 @@ def main(path, queue, rate, frame, min_distance, min_intensity):
                 break
 
             # Parse row.
-            scan_slice = Slice(row, min_distance, min_intensity)
+            scan_slice = Slice(row, min_distance, min_intensity, threshold)
             scan.add(scan_slice)
 
             # Publish full scan.
@@ -358,7 +372,7 @@ if __name__ == "__main__":
     try:
         main(
             options.path, options.queue, options.rate, options.frame,
-            options.min_distance, options.min_intensity
+            options.min_distance, options.min_intensity, options.threshold
         )
     except IOError:
         rospy.logfatal("Could not find file specified.")
