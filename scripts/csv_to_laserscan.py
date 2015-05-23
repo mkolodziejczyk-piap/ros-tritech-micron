@@ -11,9 +11,9 @@ import numpy as np
 from datetime import datetime
 from collections import namedtuple
 from geometry_msgs.msg import Point32
-from sensor_msgs.msg import ChannelFloat32
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import PointCloud
+from sensor_msgs.msg import ChannelFloat32
 
 __author__ = "Anass Al-Wohoush, Max Krogius"
 __version__ = "0.1.0"
@@ -76,14 +76,13 @@ class Slice(object):
             for index, intensity in enumerate(self.data)
         ]
         argmax = np.argmax(data)
-        max_intensity = self.data[argmax]
         self.max = (argmax + 1) * self.range / self.num_bins
         self.max_intensity = self.data[argmax]
-	
-	# Choose first value over threshold
+
+        # Choose first value over threshold.
         for i in range(len(data)):
             if data[i] > threshold:
-                self.max = (i + 1) * self.range / self.num_bins  
+                self.max = (i + 1) * self.range / self.num_bins
                 self.max_intensity = self.data[i]
                 break
 
@@ -203,7 +202,6 @@ class Scan(object):
 
         scan = LaserScan()
 
-
         # Get latest N slices.
         queued_slices = sorted(
             self.slices, key=lambda x: x.timestamp
@@ -290,7 +288,8 @@ def get_parameters():
             min_intensity: Minimum intensity.
     """
     options = namedtuple("Parameters", [
-        "path", "queue", "rate", "frame", "min_distance", "min_intensity", "width", "threshold"
+        "path", "queue", "rate", "frame",
+        "min_distance", "min_intensity", "width", "threshold"
     ])
 
     options.path = rospy.get_param("~csv", None)
@@ -327,7 +326,7 @@ def main(path, queue, rate, frame, min_distance, min_intensity, threshold):
     sector_pub = rospy.Publisher("sonar/sector", LaserScan, queue_size=10)
     point_pub = rospy.Publisher("sonar/points", PointCloud, queue_size=10)
 
-    rate = rospy.Rate(rate)  # Hz
+    rate = rospy.Rate(rate)  # Hz.
 
     scan = Scan()
     with open(path) as data:
@@ -366,7 +365,7 @@ if __name__ == "__main__":
     # Get parameters.
     options = get_parameters()
     if options.path is None:
-        rospy.logfatal("Please specify a file.")
+        rospy.logfatal("Please specify a file as _csv:=path/to/file.")
         sys.exit(-1)
 
     try:
