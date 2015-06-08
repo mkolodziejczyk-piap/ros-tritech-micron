@@ -3,10 +3,12 @@
 """Tritech Micron Sonar."""
 
 import math
+import rospy
 import datetime
 import bitstring
 import exceptions
 from socket import Socket
+from timeout import timeout
 from messages import Message
 
 __author__ = "Anass Al-Wohoush"
@@ -21,7 +23,7 @@ class Resolution(object):
     in units of 1/16th of a gradian. A higher resolution slows down the scan.
     Set as such:
 
-        with Sonar() as sonar:
+        with TritechMicron() as sonar:
             sonar.set(step=Resolution.LOW)
     """
 
@@ -31,7 +33,7 @@ class Resolution(object):
     ULTIMATE = 4
 
 
-class Sonar(object):
+class TritechMicron(object):
 
     """Tritech Micron Sonar.
 
@@ -40,7 +42,7 @@ class Sonar(object):
 
     For example, to setup a 20 m sector scan:
 
-        with Sonar() as sonar:
+        with TritechMicron() as sonar:
             sonar.set(continuous=False, range=20)
 
     Attributes:
@@ -48,6 +50,7 @@ class Sonar(object):
         ad_low: Amplitude in dB to be mapped to 0 intensity (0-80 db).
         adc8on: True if 8-bit resolution ADC, otherwise 4-bit.
         centred: Whether the sonar motor is centred.
+        clock: Sonar time of the day.
         conn: Serial connection.
         continuous: True if continuous scan, otherwise sector scan.
         gain: Initial gain percentage (0.00-1.00).
@@ -79,7 +82,6 @@ class Sonar(object):
             port: Serial port.
             inverted: Whether the sonar is mounted upside down.
         """
-
         self.port = port
         self.conn = None
         self.initialized = False
@@ -111,6 +113,10 @@ class Sonar(object):
         self.recentering = None
         self.scanning = None
 
+        # Additional information.
+        self.clock = None
+        self._time_offset = datetime.timedelta(0)
+
     def __enter__(self):
         """Initializes sonar for first use.
 
@@ -133,39 +139,47 @@ class Sonar(object):
         if not self.conn:
             try:
                 self.conn = Socket(self.port)
-            except OSError:
-                raise exceptions.SonarNotFound(self.port)
+            except OSError as e:
+                raise exceptions.SonarNotFound(self.port, e)
 
         # Update properties.
+        rospy.loginfo("Initializing sonar on %s", self.port)
         self.initialized = True
+        self.send(Message.REBOOT)
         self.update()
 
-        # Wait until sonar is done centering.
-        while not self.centred or self.motoring:
-            self.update()
+        # Verify version.
+        self.send(Message.SEND_VERSION)
+        self.get(Message.VERSION_DATA)
+
+        # Verify BB User Data.
+        self.send(Message.SEND_BB_USER)
+        self.get(Message.BB_USER_DATA)
+        self.get(Message.FPGA_CAL_DATA)
+        self.get(Message.FPGA_VERSION_DATA)
 
         # Set default properties.
         self.set(
             adc8on=True, continuous=True, scanright=True, step=Resolution.LOW,
             ad_low=0, ad_high=80, left_limit=5600, right_limit=800, mo_time=25,
-            range=20, nbins=200, gain=0.40, speed=1500.0, inverted=True
+            range=20, nbins=200, gain=0.40, speed=1500.0
         )
 
-        # Wait until sonar acknowledges properties.
-        while not self.has_cfg or self.no_params:
-            self.update()
+        rospy.loginfo("Sonar is ready for use")
 
     def close(self):
         """Closes sonar connection."""
         self.send(Message.REBOOT)
         self.conn.close()
         self.initialized = False
+        rospy.loginfo("Closed sonar socket")
 
-    def get(self, message=None):
+    def get(self, message=None, wait=2):
         """Sends command and returns reply.
 
         Args:
             message: Message to expect (default: first to come in).
+            wait: Seconds to wait until received (default: 2).
 
         Returns:
             Reply if successful, None otherwise.
@@ -173,17 +187,31 @@ class Sonar(object):
         Raises:
             SonarNotInitialized: Attempt reading serial without opening port.
         """
+        if message:
+            name = Message.to_string(message)
+            rospy.loginfo("Waiting for %s message", name)
         if not self.initialized:
             raise exceptions.SonarNotInitialized(message)
 
         try:
-            while True:
-                reply = self.conn.get_reply()
-                if reply.id == Message.ALIVE:
-                    self.__update_state(reply)
-                if message is None or reply.id == message:
-                    return reply
-        except exceptions.PacketCorrupted:
+            with timeout(seconds=wait):
+                while True:
+                    reply = self.conn.get_reply()
+                    if reply.id == Message.ALIVE:
+                        self.__update_state(reply)
+                    if message is None:
+                        return reply
+                    if reply.id == message:
+                        rospy.loginfo("Found %s message", name)
+                        return reply
+                    elif reply.id != Message.ALIVE:
+                        rospy.logwarn(
+                            "Received unexpected %s message",
+                            reply.type
+                        )
+        except (exceptions.PacketCorrupted, exceptions.TimeoutError) as e:
+            if message:
+                rospy.logerr("Failed to get %s message: %r", name, e)
             return None
 
     def send(self, command, payload=None):
@@ -251,8 +279,11 @@ class Sonar(object):
         Args:
             See set().
         """
+        rospy.logwarn("Setting parameters...")
+
         # Set and compare sonar properties.
-        necessary, only_reverse = False, True
+        necessary = not self.has_cfg or self.no_params
+        only_reverse = not necessary
         for key, value in kwargs.iteritems():
             if value is not None:
                 if self.__getattribute__(key) != value:
@@ -262,13 +293,21 @@ class Sonar(object):
                         only_reverse = False
 
         # Return if unnecessary.
-        if not necessary and self.initialized:
+        if not necessary:
+            rospy.loginfo("Parameters are already set")
             return
 
         # Return if only switching the motor's direction is necessary.
         if only_reverse:
+            rospy.loginfo("Only reversing direction")
             self.scanright = not self.scanright
             return self.reverse()
+
+        self._log_properties()
+
+        # This device is not Dual Channel so skip the “V3B” Gain Parameter
+        # block: 0x01 for normal, 0x1D for extended V3B Gain Parameters.
+        v3b = bitstring.pack("0x01")
 
         # Construct the HdCtrl bytes to control operation:
         #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
@@ -288,7 +327,7 @@ class Sonar(object):
         #   Bit 14: ReplyThr        0: default      1: N/A
         #   Bit 15: IgnoreSensor    0: default      1: emergencies
         hd_ctrl = bitstring.pack(
-            "bool, bool, bool, bool, 0b000011001000",
+            "bool, bool, bool, bool, 0b000011000100",
             self.adc8on, self.continuous, self.scanright, self.inverted
         )
 
@@ -311,8 +350,8 @@ class Sonar(object):
         range_scale = bitstring.pack("uintle:16", int(self.range * 10))
 
         # Left/right angles limits are in 1/16th of a gradian.
-        _left_angle = Sonar._to_sonar_angles(self.left_limit)
-        _right_angle = Sonar._to_sonar_angles(self.right_limit)
+        _left_angle = TritechMicron.to_sonar_angles(self.left_limit)
+        _right_angle = TritechMicron.to_sonar_angles(self.right_limit)
         left_limit = bitstring.pack("uintle:16", _left_angle)
         right_limit = bitstring.pack("uintle:16", _right_angle)
 
@@ -364,7 +403,7 @@ class Sonar(object):
 
         # Order bitstream.
         bitstream = (
-            hd_ctrl, hd_type, tx_rx, range_scale, left_limit, right_limit,
+            v3b, hd_ctrl, hd_type, tx_rx, range_scale, left_limit, right_limit,
             ad_span, ad_low, gain, slope, mo_time, step, ad_interval, nbins,
             max_ad_buf, lockout, minor_axis, major_axis, ctl2, scanz
         )
@@ -374,6 +413,16 @@ class Sonar(object):
             payload.append(chunk)
 
         self.send(Message.HEAD_COMMAND, payload)
+
+        # Wait until sonar acknowledges properties.
+        while not self.has_cfg or self.no_params:
+            rospy.logdebug(
+                "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
+                self.has_cfg, self.no_params
+            )
+            self.update()
+
+        rospy.logwarn("Parameters are set")
 
     def reverse(self):
         """Instantaneously reverse scan direction."""
@@ -388,17 +437,15 @@ class Sonar(object):
         the heading and a new dataset and complete_callback with the current
         heading when scan is complete.
 
-        To stop a scan midway, simply have the feedback_callback return False.
+        To stop a scan midway, simply call the preempt().
 
         Args:
             feedback_callback: Callback for feedback.
-                Called with args=(heading, bins)
+                Called with args=(sonar, heading, bins)
                 where heading is an int in radians
                 and bins is an int array with the intensity at every bin.
-                This callback should return True if the scan should proceed and
-                False to halt it.
             complete_callback: Callback on completion or halt.
-                Called with args=(heading,)
+                Called with args=(sonar, heading,)
                 where heading is an int in radians.
             kwargs: Key-word arguments to pass to update before scanning.
 
@@ -415,21 +462,50 @@ class Sonar(object):
         if kwargs:
             self.set(**kwargs)
 
-        # Pad current time in milliseconds with zeroes since N/A.
-        payload = bitstring.pack("pad:32")
+        def ping():
+            """Commands the sonar to ping."""
+            # Get current time in milliseconds.
+            now = datetime.datetime.now()
+            current_time = datetime.timedelta(
+                hours=now.hour, minutes=now.minute,
+                seconds=now.second, microseconds=0
+            )
+            payload = bitstring.pack(
+                "uintle:32",
+                current_time.total_seconds() * 1000
+            )
 
-        # Send command.
-        self.send(Message.SEND_DATA, payload)
+            # Reset offset for on time.
+            self._time_offset = current_time - self.on_time
 
-        while True:
+            # Send command.
+            self.send(Message.SEND_DATA, payload)
+
+        self.preempted = False
+        while not self.preempted:
+            # Pings the sonar.
+            ping()
+
+            # Queues the next ping for quicker scanning.
+            ping()
+
             # Get the current heading data.
-            data = self.get(Message.HEAD_DATA).payload
+            head_data = self.get(Message.HEAD_DATA, wait=1)
+            if not head_data:
+                continue
+
+            data = head_data.payload
 
             # Get the total number of bytes.
             count = data.read(16).uintle
+            rospy.logdebug("Byte count is %d", count)
 
-            # Get the device type.
-            device_type = data.read(8).hex
+            # The device type should be 0x11 for a DST Sonar.
+            device_type = data.read(8)
+            if device_type.uint != 0x11:
+                rospy.logerr("Unexpected device type: %s", device_type.hex)
+            else:
+                rospy.logdebug("Received device type: %s", device_type.hex)
 
             # Get the head status byte:
             #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
@@ -440,7 +516,8 @@ class Sonar(object):
             #   Bit 5:  RESERVED (ignore).
             #   Bit 6:  RESERVED (ignore).
             #   Bit 7:  Message appended after last packet data reply.
-            _head_status = data.read(8)
+            _head_status = data.read(8).bin
+            rospy.logdebug("Head status byte is %s", _head_status)
 
             # Get the sweep code. Its value should correspond to:
             #   0: Scanning normal.
@@ -450,6 +527,7 @@ class Sonar(object):
             #   4: RESERVED (ignore)
             #   5: Scan at center position.
             sweep = data.read(8).uint
+            rospy.logdebug("Sweep code is %d", sweep)
 
             # Get the HdCtrl bytes to control operation:
             #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
@@ -468,12 +546,14 @@ class Sonar(object):
             #   Bit 13: ReplyASL        0: N/A          1: default
             #   Bit 14: ReplyThr        0: default      1: N/A
             #   Bit 15: IgnoreSensor    0: default      1: emergencies
-            # Should be the same as what was sent so ignore for now.
+            # Should be the same as what was sent.
             hd_ctrl = data.read(16)
-            adc8on = hd_ctrl[0]
-            continuous = hd_ctrl[1]
-            scanright = hd_ctrl[2]
-            inverted = hd_ctrl[3]
+            self.adc8on = hd_ctrl[0]
+            self.continuous = hd_ctrl[1]
+            self.scanright = hd_ctrl[2]
+            self.inverted = hd_ctrl[3]
+            self.motor_on = not hd_ctrl[4]
+            rospy.logdebug("Head control bytes are %s", hd_ctrl.bin)
 
             # Range scale.
             # The lower 14 bits are the range scale * 10 units and the higher 2
@@ -484,13 +564,15 @@ class Sonar(object):
             #   3: yards
             # Only the metric system is implemented for now, because it is
             # better.
-            range = data.read(16).uintle / 10.0
+            self.range = data.read(16).uintle / 10.0
+            rospy.logdebug("Range scale is %f", self.range)
 
             # TX/RX transmitter constants: N/A to DST.
             tx_rx = data.read(32)
 
             # The gain ranges from 0 to 210.
-            gain = data.read(8).uintle / 210.0
+            self.gain = data.read(8).uintle / 210.0
+            rospy.logdebug("Gain is %f", self.gain)
 
             # Slope setting is N/A to DST.
             slope = data.read(16)
@@ -501,49 +583,65 @@ class Sonar(object):
             # ADSpan = MAX * range / 80 where range is the desired amplitude
             #   range.
             # The full range is between ADLow and ADLow + ADSpan.
-            MAX_SIZE = 255 if adc8on else 15
+            MAX_SIZE = 255 if self.adc8on else 15
             ad_span = data.read(8).uintle
-            ad_low = data.read(8).uintle
-            min_intensity = ad_low * 80.0 / MAX_SIZE
+            self.ad_low = data.read(8).uintle
+            min_intensity = self.ad_low * 80.0 / MAX_SIZE
             span_intensity = ad_span * 80.0 / MAX_SIZE
-            max_intensity = min_intensity + span_intensity
+            self.ad_high = min_intensity + span_intensity
+            rospy.logdebug("AD range is %f to %f", self.ad_low, self.ad_high)
 
             # Heading offset is ignored.
-            heading_offset = data.read(8).uint
+            heading_offset = TritechMicron.to_radians(data.read(16).uint)
+            rospy.logdebug("Heading offset is %f", heading_offset)
 
             # ADInterval defines the sampling interval of each bin and is in
             # units of 640 nanoseconds.
             ad_interval = data.read(16).uintle
+            rospy.logdebug("AD interval is %d", ad_interval)
 
             # Left/right angles limits are in 1/16th of a gradian.
-            left_limit = Sonar._to_radians(data.read(16).uintle)
-            right_limit = Sonar._to_radians(data.read(16).uintle)
+            self.left_limit = TritechMicron.to_radians(data.read(16).uintle)
+            self.right_limit = TritechMicron.to_radians(data.read(16).uintle)
+            rospy.logdebug(
+                "Limits are %f to %f",
+                self.left_limit, self.right_limit
+            )
 
             # Step angle size.
-            step = Sonar._to_radians(data.read(8).uint)
+            self.step = TritechMicron.to_radians(data.read(8).uint)
+            rospy.logdebug("Step size is %f", self.step)
 
             # Heading is in units of 1/16th of a gradian.
-            heading = Sonar._to_radians(data.read(16).uintle)
-            self.heading = heading
+            self.heading = TritechMicron.to_radians(data.read(16).uintle)
+            rospy.loginfo("Heading is now %f", self.heading)
 
             # Dbytes is the number of bytes with data to follow.
             dbytes = data.read(16).uintle
+            rospy.logdebug("DBytes is %d", dbytes)
 
             # Get bins.
-            _size = 8 if adc8on else 4
-            _range = range(dbytes) if adc8on else range(dbytes * 2)
-            bins = [data.read(_size).uintle for i in _range]
+            if self.adc8on:
+                bins = [data.read(8).uint for i in range(dbytes)]
+            else:
+                bins = [data.read(4).uint for i in range(dbytes * 2)]
 
             # Run feedback callback.
-            proceed = feedback_callback(heading, bins)
+            feedback_callback(self, self.heading, bins)
 
             # Proceed or not.
-            if (not proceed or (scanright and sweep == 2) or
-                    (not scanright and sweep == 3)):
-                break
+            if not self.scanright and sweep == 1:
+                rospy.logwarn("Reached left limit")
+            elif self.scanright and sweep == 2:
+                rospy.logwarn("Reached right limit")
 
         # Run completion callback.
-        complete_callback(self.heading)
+        complete_callback(self, self.heading)
+
+    def preempt(self):
+        """Preempts a scan in progress."""
+        rospy.logwarn("Preempting scan...")
+        self.preempted = True
 
     def reboot(self):
         """Reboots Sonar.
@@ -551,6 +649,7 @@ class Sonar(object):
         Raises:
             SonarNotInitialized: Sonar is not initialized.
         """
+        rospy.logwarn("Rebooting sonar...")
         self.send(Message.REBOOT)
         self.open()
 
@@ -560,8 +659,7 @@ class Sonar(object):
         Raises:
             SonarNotInitialized: Sonar is not initialized.
         """
-        reply = self.get(Message.ALIVE)
-        self.__update_state(reply)
+        self.get(Message.ALIVE)
 
     def __update_state(self, alive):
         """Updates Sonar states from mtAlive message.
@@ -573,21 +671,48 @@ class Sonar(object):
         payload.bytepos = 1
 
         micros = payload.read(32).uintle * 1000
-        self.on_time = datetime.timedelta(microseconds=micros)
-        self.heading = Sonar._to_radians(payload.read(16).uintle)
+        self.clock = datetime.timedelta(microseconds=micros)
+        self.on_time = self.clock - self._time_offset
+        self.heading = TritechMicron.to_radians(payload.read(16).uintle)
 
         head_inf = payload.read(8)
         self.recentering = head_inf[0]
         self.centred = head_inf[1]
         self.motoring = head_inf[2]
         self.motor_on = head_inf[3]
-        self.clockwise = head_inf[4]
+        self.scanright = head_inf[4]
         self.scanning = head_inf[5]
         self.no_params = head_inf[6]
         self.has_cfg = head_inf[7]
 
+        rospy.logdebug("ON TIME:     %s", self.on_time)
+        rospy.logdebug("RECENTERING: %s", self.recentering)
+        rospy.logdebug("CENTRED:     %s", self.centred)
+        rospy.logdebug("MOTORING:    %s", self.motoring)
+        rospy.logdebug("MOTOR ON:    %s", self.motor_on)
+        rospy.logdebug("CLOCKWISE:   %s", self.scanright)
+        rospy.logdebug("SCANNING:    %s", self.scanning)
+        rospy.logdebug("NO PARAMS:   %s", self.no_params)
+        rospy.logdebug("HAS CFG:     %s", self.has_cfg)
+
+    def _log_properties(self):
+        rospy.logwarn("CONTINUOUS:  %s", self.continuous)
+        rospy.logwarn("LEFT LIMIT:  %s", self.left_limit)
+        rospy.logwarn("RIGHT LIMIT: %s", self.right_limit)
+        rospy.logwarn("STEP SIZE:   %s", self.step)
+        rospy.logwarn("N BINS:      %s", self.nbins)
+        rospy.logwarn("RANGE:       %s m", self.range)
+        rospy.logwarn("INVERTED:    %s", self.inverted)
+        rospy.logwarn("AD HIGH:     %s dB", self.ad_high)
+        rospy.logwarn("AD LOW:      %s dB", self.ad_low)
+        rospy.logwarn("ADC 8 ON:    %s", self.adc8on)
+        rospy.logwarn("GAIN:        %s%%", self.gain * 100)
+        rospy.logwarn("MOTOR TIME:  %s us", self.mo_time)
+        rospy.logwarn("CLOCKWISE:   %s", self.scanright)
+        rospy.logwarn("SPEED:       %s m/s", self.speed)
+
     @classmethod
-    def _to_sonar_angles(cls, rad):
+    def to_sonar_angles(cls, rad):
         """Converts radians to units of 1/16th of a gradian.
 
         Args:
@@ -599,28 +724,13 @@ class Sonar(object):
         return int(rad * 3200 / math.pi) % 6400
 
     @classmethod
-    def _to_radians(cls, angle):
+    def to_radians(cls, angle):
         """Converts units of 1/16th of a gradian to radians.
 
         Args:
-            rad: Angle in units of 1/16th of a gradian.
+            angle: Angle in units of 1/16th of a gradian.
 
         Returns:
             Angle in radians.
         """
         return angle / 3200.0 * math.pi
-
-
-if __name__ == '__main__':
-    def feedback_callback(heading, bins):
-        print heading, bins
-
-    def complete_callback(heading):
-        print "DONE", heading
-
-    with Sonar("/dev/tty.usbserial") as sonar:
-        print "ON TIME:", sonar.on_time
-        print "REBOOTING SONAR..."
-        sonar.reboot()
-        print "ON TIME:", sonar.on_time
-        sonar.scan(feedback_callback, complete_callback)
