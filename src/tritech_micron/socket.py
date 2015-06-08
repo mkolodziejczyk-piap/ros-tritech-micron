@@ -2,9 +2,11 @@
 
 """Tritech Micron Sonar serial communication handler."""
 
+import rospy
 import serial
 import bitstring
 from replies import Reply
+from messages import Message
 from commands import Command
 from exceptions import PacketIncomplete
 
@@ -44,6 +46,11 @@ class Socket(object):
             payload: Additional payload to send in packet.
         """
         cmd = Command(message, payload)
+        rospy.loginfo("Sending %s: %s", Message.to_string(message), payload)
+        rospy.logdebug(
+            "Sending %s",
+            "".join(["{:02X}".format(ord(x)) for x in cmd.to_string()])
+        )
         self.conn.write(cmd.to_string())
 
     def get_reply(self):
@@ -76,4 +83,5 @@ class Socket(object):
                 # Keep looking.
                 continue
 
+        rospy.loginfo("Received %s: %s", reply.type, reply.payload)
         return reply
