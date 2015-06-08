@@ -3,7 +3,7 @@
 """Tritech Micron Sonar messages."""
 
 __author__ = "Erin Havens, Anass Al-Wohoush"
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 class Message(object):
@@ -50,3 +50,18 @@ class Message(object):
     RESET_TO_DEFAULTS = 70
     CHANGE_VER_DATA = 71
     FGPA_PROG_USR_CDE = 72
+
+    @classmethod
+    def to_string(cls, id):
+        for attr, value in cls.__dict__.iteritems():
+            if value == id:
+                return attr
+        else:
+            return None
+
+    @classmethod
+    def from_string(cls, name):
+        if hasattr(cls, name):
+            return cls.__getattribute__(name)
+        else:
+            return None
