@@ -2,6 +2,7 @@
 
 """Tritech Micron Sonar replies."""
 
+from messages import Message
 from exceptions import PacketIncomplete, PacketCorrupted
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
@@ -14,6 +15,7 @@ class Reply(object):
 
     Attributes:
         id: Message ID.
+        type: Message ID human-readable name.
         is_last: Whether packet is last in sequence.
         payload: Data excluding header and end character.
         sequence: Packet sequence.
@@ -33,6 +35,7 @@ class Reply(object):
         self.bitstream = bitstream
 
         self.id = None
+        self.type = None
         self.is_last = None
         self.payload = None
         self.sequence = None
@@ -107,13 +110,21 @@ class Reply(object):
         dest_id = self.bitstream.read("uint:8")
         if dest_id != 255:
             raise PacketCorrupted(
-                "Packet Destination Identification Node: {}".format(dest_id)
+                "Invalid Packet Destination Identification Node: {}"
+                .format(dest_id)
             )
+
+        # Parse message ID and verify it's between 0-72.
+        self.bitstream.bytepos = 10
+        self.id = self.bitstream.read("uint:8")
+        self.type = Message.to_string(self.id)
+        if not 0 <= self.id <= 72:
+            raise PacketCorrupted("Invalid message ID: {}".format(self.id))
 
         # Check for size following byte 10, excluding LF.
         self.bitstream.bytepos = 9
         byte_count = self.bitstream.read("uint:8")
-        if self.id == 2 and byte_count == 0:
+        if self.id == Message.HEAD_DATA and byte_count == 0:
             # mtHeadData single-packet replies are different; always 0.
             # Could be used to confirm whether it's in single-packet mode.
             pass
@@ -122,15 +133,9 @@ class Reply(object):
             # Byte count differs from self.size by 5 bytes.
             if byte_count != self.size - 5:
                 raise PacketCorrupted(
-                    "Number of bytes left mismatch: recv: {}, exp: {}"
-                    .format(byte_count, self.size - 5)
+                    "Number of bytes left mismatch: recv: {}, exp: {}, id: {}"
+                    .format(byte_count, self.size - 5, self.id)
                 )
-
-        # Parse message ID and verify it's between 0-72.
-        self.bitstream.bytepos = 10
-        self.id = self.bitstream.read("uint:8")
-        if not 0 <= self.id <= 72:
-            raise PacketCorrupted("Invalid message ID: {}".format(self.id))
 
         # Parse message sequence bitset.
         self.bitstream.bytepos = 11
