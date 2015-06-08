@@ -1,0 +1,6 @@
+<launch>
+    <node name="tritech_micron"
+        pkg="tritech_micron"
+        type="scan.py"
+    />
+</launch>
