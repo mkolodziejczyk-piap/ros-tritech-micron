@@ -29,3 +29,8 @@ class SonarNotFound(Exception):
 class SonarNotInitialized(Exception):
     """Sonar not initialized."""
     pass
+
+
+class TimeoutError(Exception):
+    """Communication timed out."""
+    pass
