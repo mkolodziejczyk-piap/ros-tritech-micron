@@ -12,25 +12,6 @@ from timeout import timeout
 from messages import Message
 
 __author__ = "Anass Al-Wohoush"
-__version__ = "0.7.0"
-
-
-class Resolution(object):
-
-    """Sonar mechanical resolution enumeration.
-
-    The mechanical resolution is the angle the step motor rotates per scan line
-    in units of 1/16th of a gradian. A higher resolution slows down the scan.
-    Set as such:
-
-        with TritechMicron() as sonar:
-            sonar.set(step=Resolution.LOW)
-    """
-
-    LOW = 32
-    MEDIUM = 16
-    HIGH = 8
-    ULTIMATE = 4
 
 
 class TritechMicron(object):
@@ -44,6 +25,9 @@ class TritechMicron(object):
 
         with TritechMicron() as sonar:
             sonar.set(continuous=False, range=20)
+
+    All angles are in radians and headings are relative to the blue LED. So, if
+    the sonar were not inverted, 0 radians would be facing forward.
 
     Attributes:
         ad_high: Amplitude in db to be mapped to max intensity (0-80 db).
@@ -64,7 +48,7 @@ class TritechMicron(object):
         motor_on: Whether device is powered and motor is primed.
         nbins: Number of bins per scan line.
         no_params: Whether the sonar needs parameters before it can scan.
-        on_time: Sonar up time.
+        up_time: Sonar up time.
         port: Serial port.
         range: Scan range in meters.
         recentering: Whether the sonar is recentering its motor.
@@ -75,47 +59,55 @@ class TritechMicron(object):
         step: Mechanical resolution (Resolution enumeration).
     """
 
-    def __init__(self, port="/dev/sonar", inverted=False):
+    def __init__(self, port="/dev/sonar", inverted=False, **kwargs):
         """Constructs Sonar object.
 
         Args:
-            port: Serial port.
-            inverted: Whether the sonar is mounted upside down.
+            port: Serial port (default: /dev/sonar).
+            inverted: Whether sonar is mounted upside down (default: False).
+            kwargs: Key-word arguments to pass to set() on initialization.
         """
+        # Parameter defaults.
+        self.ad_high = 80.0
+        self.ad_low = 0.00
+        self.adc8on = True
+        self.continuous = True
+        self.gain = 0.40
+        self.inverted = inverted
+        self.left_limit = TritechMicron.to_radians(0)
+        self.mo_time = 250
+        self.nbins = 200
+        self.range = 5.00
+        self.right_limit = TritechMicron.to_radians(6399)
+        self.scanright = True
+        self.speed = 1500.0
+        self.step = Resolution.LOW
+
+        # Override defaults.
+        for key, value in kwargs.iteritems():
+            if hasattr(self, key):
+                self.__setattr__(key, value)
+
+        # Connection properties.
         self.port = port
         self.conn = None
         self.initialized = False
 
-        # Parameters.
-        self.ad_high = None
-        self.ad_low = None
-        self.adc8on = None
-        self.continuous = None
-        self.gain = None
-        self.inverted = inverted
-        self.left_limit = None
-        self.mo_time = None
-        self.nbins = None
-        self.range = None
-        self.right_limit = None
-        self.scanright = None
-        self.speed = None
-        self.step = None
-
         # Head info.
-        self.centred = None
-        self.has_cfg = None
+        self.centred = False
+        self.has_cfg = False
         self.heading = None
-        self.motor_on = None
-        self.motoring = None
-        self.no_params = None
-        self.on_time = datetime.timedelta(0)
-        self.recentering = None
-        self.scanning = None
+        self.motor_on = False
+        self.motoring = False
+        self.no_params = True
+        self.up_time = datetime.timedelta(0)
+        self.recentering = False
+        self.scanning = False
 
-        # Additional information.
-        self.clock = None
+        # Additional properties.
+        self.clock = datetime.timedelta(0)
         self._time_offset = datetime.timedelta(0)
+        self.preempted = False
 
     def __enter__(self):
         """Initializes sonar for first use.
@@ -145,30 +137,19 @@ class TritechMicron(object):
         # Update properties.
         rospy.loginfo("Initializing sonar on %s", self.port)
         self.initialized = True
+
+        # Reboot to make sure the sonar is clean.
         self.send(Message.REBOOT)
         self.update()
 
-        # Verify version.
-        self.send(Message.SEND_VERSION)
-        self.get(Message.VERSION_DATA)
-
-        # Verify BB User Data.
-        self.send(Message.SEND_BB_USER)
-        self.get(Message.BB_USER_DATA)
-        self.get(Message.FPGA_CAL_DATA)
-        self.get(Message.FPGA_VERSION_DATA)
-
         # Set default properties.
-        self.set(
-            adc8on=True, continuous=True, scanright=True, step=Resolution.LOW,
-            ad_low=0, ad_high=80, left_limit=5600, right_limit=800, mo_time=25,
-            range=20, nbins=200, gain=0.40, speed=1500.0
-        )
+        self.set(force=True)
 
         rospy.loginfo("Sonar is ready for use")
 
     def close(self):
         """Closes sonar connection."""
+        # Reboot first to clear sonar of all parameters.
         self.send(Message.REBOOT)
         self.conn.close()
         self.initialized = False
@@ -189,7 +170,7 @@ class TritechMicron(object):
         """
         if message:
             name = Message.to_string(message)
-            rospy.loginfo("Waiting for %s message", name)
+            rospy.logdebug("Waiting for %s message", name)
         if not self.initialized:
             raise exceptions.SonarNotInitialized(message)
 
@@ -202,7 +183,7 @@ class TritechMicron(object):
                     if message is None:
                         return reply
                     if reply.id == message:
-                        rospy.loginfo("Found %s message", name)
+                        rospy.logdebug("Found %s message", name)
                         return reply
                     elif reply.id != Message.ALIVE:
                         rospy.logwarn(
@@ -231,7 +212,7 @@ class TritechMicron(object):
     def set(self, adc8on=None, continuous=None, scanright=None, step=None,
             ad_low=None, ad_high=None, left_limit=None, right_limit=None,
             mo_time=None, range=None, nbins=None, gain=None, speed=None,
-            inverted=None):
+            inverted=None, force=False):
         """Sends Sonar head command with new properties if needed.
 
         Only the parameters specified will be modified.
@@ -254,6 +235,7 @@ class TritechMicron(object):
             scanright: Whether the sonar scanning direction is clockwise.
             speed: Speed of sound in medium.
             step: Mechanical resolution (Resolution enumeration).
+            force: Whether to force setting the parameters or not.
 
         Raises:
             SonarNotInitialized: Sonar is not initialized.
@@ -265,10 +247,10 @@ class TritechMicron(object):
             adc8on=adc8on, continuous=continuous, scanright=scanright,
             step=step, ad_low=ad_low, ad_high=ad_high, left_limit=left_limit,
             right_limit=right_limit, mo_time=mo_time, range=range, nbins=nbins,
-            gain=gain, speed=speed, inverted=inverted
+            gain=gain, speed=speed, inverted=inverted, force=force
         )
 
-    def __set_parameters(self, **kwargs):
+    def __set_parameters(self, force, **kwargs):
         """Sends Sonar head command to set sonar properties.
 
         Only the parameters specified will be modified.
@@ -277,16 +259,17 @@ class TritechMicron(object):
         to see if sending the command is necessary.
 
         Args:
+            force: Whether to force set parameters.
             See set().
         """
         rospy.logwarn("Setting parameters...")
 
         # Set and compare sonar properties.
-        necessary = not self.has_cfg or self.no_params
+        necessary = not self.has_cfg or self.no_params or force
         only_reverse = not necessary
         for key, value in kwargs.iteritems():
             if value is not None:
-                if self.__getattribute__(key) != value:
+                if hasattr(self, key) and self.__getattribute__(key) != value:
                     self.__setattr__(key, value)
                     necessary = True
                     if key != "scanright":
@@ -303,7 +286,21 @@ class TritechMicron(object):
             self.scanright = not self.scanright
             return self.reverse()
 
-        self._log_properties()
+        # Log properties.
+        rospy.logwarn("CONTINUOUS:  %s", self.continuous)
+        rospy.logwarn("LEFT LIMIT:  %s rad", self.left_limit)
+        rospy.logwarn("RIGHT LIMIT: %s rad", self.right_limit)
+        rospy.logwarn("STEP SIZE:   %s rad", self.step)
+        rospy.logwarn("N BINS:      %s", self.nbins)
+        rospy.logwarn("RANGE:       %s m", self.range)
+        rospy.logwarn("INVERTED:    %s", self.inverted)
+        rospy.logwarn("AD HIGH:     %s dB", self.ad_high)
+        rospy.logwarn("AD LOW:      %s dB", self.ad_low)
+        rospy.logwarn("ADC 8 ON:    %s", self.adc8on)
+        rospy.logwarn("GAIN:        %s%%", self.gain * 100)
+        rospy.logwarn("MOTOR TIME:  %s us", self.mo_time)
+        rospy.logwarn("CLOCKWISE:   %s", self.scanright)
+        rospy.logwarn("SPEED:       %s m/s", self.speed)
 
         # This device is not Dual Channel so skip the “V3B” Gain Parameter
         # block: 0x01 for normal, 0x1D for extended V3B Gain Parameters.
@@ -327,9 +324,10 @@ class TritechMicron(object):
         #   Bit 14: ReplyThr        0: default      1: N/A
         #   Bit 15: IgnoreSensor    0: default      1: emergencies
         hd_ctrl = bitstring.pack(
-            "bool, bool, bool, bool, 0b000011000100",
-            self.adc8on, self.continuous, self.scanright, self.inverted
+            "0b001000110000, bool, bool, bool, bool",
+            self.inverted, self.scanright, self.continuous, self.adc8on
         )
+        hd_ctrl.byteswap()  # Little endian please.
 
         # Set the sonar type: 0x11 for DST.
         hd_type = bitstring.pack("0x11")
@@ -374,13 +372,15 @@ class TritechMicron(object):
         slope = bitstring.BitStream(32)
 
         # Set the high speed limit of the motor in units of 10 microseconds.
-        mo_time = bitstring.pack("uint:8", self.mo_time)
+        mo_time = bitstring.pack("uint:8", int(self.mo_time / 10))
 
         # Set the step angle size in 1/16th of a gradian.
         #   32: low resolution
         #   16: medium resolution
-        #   8: high resolution
-        step = bitstring.pack("uint:8", self.step)
+        #   8:  high resolution
+        #   4:  ultimate resolution
+        _step_size = TritechMicron.to_sonar_angles(self.step)
+        step = bitstring.pack("uint:8", _step_size)
 
         # ADInterval defines the sampling interval of each bin and is in units
         # of 640 nanoseconds.
@@ -401,13 +401,12 @@ class TritechMicron(object):
         # Special devices setting. Should be left blank.
         scanz = bitstring.pack("uint:8, uint:8", 0, 0)
 
-        # Order bitstream.
+        # Order and construct bitstream.
         bitstream = (
             v3b, hd_ctrl, hd_type, tx_rx, range_scale, left_limit, right_limit,
             ad_span, ad_low, gain, slope, mo_time, step, ad_interval, nbins,
             max_ad_buf, lockout, minor_axis, major_axis, ctl2, scanz
         )
-
         payload = bitstring.BitStream()
         for chunk in bitstream:
             payload.append(chunk)
@@ -425,29 +424,32 @@ class TritechMicron(object):
         rospy.logwarn("Parameters are set")
 
     def reverse(self):
-        """Instantaneously reverse scan direction."""
+        """Instantaneously reverses scan direction."""
         payload = bitstring.pack("0x0F")
         self.send(Message.HEAD_COMMAND, payload)
         self.scanright = not self.scanright
 
-    def scan(self, feedback_callback, complete_callback, **kwargs):
+    def scan(self, feedback_callback, complete_callback=None, **kwargs):
         """Sends scan command.
 
         This method is blocking but calls feedback_callback at every reply with
         the heading and a new dataset and complete_callback with the current
-        heading when scan is complete.
+        heading when scan is stopped.
 
-        To stop a scan midway, simply call the preempt().
+        To stop a scan, simply call the preempt(). Otherwise, the scan will
+        never end.
+
+        The intensity at every bin is an integer value ranging between 0 and
+        255.
 
         Args:
             feedback_callback: Callback for feedback.
-                Called with args=(sonar, heading, bins)
-                where heading is an int in radians
-                and bins is an int array with the intensity at every bin.
-            complete_callback: Callback on completion or halt.
-                Called with args=(sonar, heading,)
-                where heading is an int in radians.
-            kwargs: Key-word arguments to pass to update before scanning.
+                Called with args=(sonar, range, heading, bins)
+                where range is in meters, heading is in radians
+                and bins is an integer array with the intensity at every bin.
+            complete_callback: Callback on completion or halt (optional).
+                Called with args=(sonar, heading,) where heading is in radians.
+            kwargs: Key-word arguments to pass to set() before scanning.
 
         Raises:
             SonarNotInitialized: Sonar is not initialized.
@@ -476,24 +478,21 @@ class TritechMicron(object):
             )
 
             # Reset offset for on time.
-            self._time_offset = current_time - self.on_time
+            self._time_offset = current_time - self.up_time
 
             # Send command.
             self.send(Message.SEND_DATA, payload)
 
+        # Scan until stopped.
         self.preempted = False
         while not self.preempted:
             # Pings the sonar.
-            ping()
-
-            # Queues the next ping for quicker scanning.
             ping()
 
             # Get the current heading data.
             head_data = self.get(Message.HEAD_DATA, wait=1)
             if not head_data:
                 continue
-
             data = head_data.payload
 
             # Get the total number of bytes.
@@ -504,8 +503,7 @@ class TritechMicron(object):
             device_type = data.read(8)
             if device_type.uint != 0x11:
                 rospy.logerr("Unexpected device type: %s", device_type.hex)
-            else:
-                rospy.logdebug("Received device type: %s", device_type.hex)
+                continue
 
             # Get the head status byte:
             #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
@@ -548,12 +546,14 @@ class TritechMicron(object):
             #   Bit 15: IgnoreSensor    0: default      1: emergencies
             # Should be the same as what was sent.
             hd_ctrl = data.read(16)
-            self.adc8on = hd_ctrl[0]
-            self.continuous = hd_ctrl[1]
-            self.scanright = hd_ctrl[2]
-            self.inverted = hd_ctrl[3]
-            self.motor_on = not hd_ctrl[4]
+            hd_ctrl.byteswap()  # Little endian please.
+            self.inverted, self.scanright, self.continuous, self.adc8on = (
+                hd_ctrl.unpack("pad:12, bool, bool, bool, bool")
+            )
             rospy.logdebug("Head control bytes are %s", hd_ctrl.bin)
+            rospy.logdebug("ADC8 mode %s", self.adc8on)
+            rospy.logdebug("Continuous mode %s", self.continuous)
+            rospy.logdebug("Scanning right %s", self.scanright)
 
             # Range scale.
             # The lower 14 bits are the range scale * 10 units and the higher 2
@@ -568,14 +568,14 @@ class TritechMicron(object):
             rospy.logdebug("Range scale is %f", self.range)
 
             # TX/RX transmitter constants: N/A to DST.
-            tx_rx = data.read(32)
+            data.read(32)
 
             # The gain ranges from 0 to 210.
             self.gain = data.read(8).uintle / 210.0
             rospy.logdebug("Gain is %f", self.gain)
 
             # Slope setting is N/A to DST.
-            slope = data.read(16)
+            data.read(16)
 
             # If the ADC is set to 8-bit, MAX = 255 else MAX = 15.
             # ADLow = MAX * low / 80 where low is the desired minimum
@@ -627,16 +627,17 @@ class TritechMicron(object):
                 bins = [data.read(4).uint for i in range(dbytes * 2)]
 
             # Run feedback callback.
-            feedback_callback(self, self.heading, bins)
+            feedback_callback(self, self.range, self.heading, bins)
 
             # Proceed or not.
             if not self.scanright and sweep == 1:
-                rospy.logwarn("Reached left limit")
+                rospy.loginfo("Reached left limit")
             elif self.scanright and sweep == 2:
-                rospy.logwarn("Reached right limit")
+                rospy.loginfo("Reached right limit")
 
         # Run completion callback.
-        complete_callback(self, self.heading)
+        if complete_callback is not None:
+            complete_callback(self, self.heading)
 
     def preempt(self):
         """Preempts a scan in progress."""
@@ -670,11 +671,17 @@ class TritechMicron(object):
         payload = alive.payload
         payload.bytepos = 1
 
+        # Get current time and compute up time.
         micros = payload.read(32).uintle * 1000
         self.clock = datetime.timedelta(microseconds=micros)
-        self.on_time = self.clock - self._time_offset
+        if self._time_offset > self.clock:
+            self._time_offset = datetime.timedelta(0)
+        self.up_time = self.clock - self._time_offset
+
+        # Get heading.
         self.heading = TritechMicron.to_radians(payload.read(16).uintle)
 
+        # Decode HeadInf byte.
         head_inf = payload.read(8)
         self.recentering = head_inf[0]
         self.centred = head_inf[1]
@@ -685,7 +692,7 @@ class TritechMicron(object):
         self.no_params = head_inf[6]
         self.has_cfg = head_inf[7]
 
-        rospy.logdebug("ON TIME:     %s", self.on_time)
+        rospy.loginfo("UP TIME:     %s", self.up_time)
         rospy.logdebug("RECENTERING: %s", self.recentering)
         rospy.logdebug("CENTRED:     %s", self.centred)
         rospy.logdebug("MOTORING:    %s", self.motoring)
@@ -694,22 +701,6 @@ class TritechMicron(object):
         rospy.logdebug("SCANNING:    %s", self.scanning)
         rospy.logdebug("NO PARAMS:   %s", self.no_params)
         rospy.logdebug("HAS CFG:     %s", self.has_cfg)
-
-    def _log_properties(self):
-        rospy.logwarn("CONTINUOUS:  %s", self.continuous)
-        rospy.logwarn("LEFT LIMIT:  %s", self.left_limit)
-        rospy.logwarn("RIGHT LIMIT: %s", self.right_limit)
-        rospy.logwarn("STEP SIZE:   %s", self.step)
-        rospy.logwarn("N BINS:      %s", self.nbins)
-        rospy.logwarn("RANGE:       %s m", self.range)
-        rospy.logwarn("INVERTED:    %s", self.inverted)
-        rospy.logwarn("AD HIGH:     %s dB", self.ad_high)
-        rospy.logwarn("AD LOW:      %s dB", self.ad_low)
-        rospy.logwarn("ADC 8 ON:    %s", self.adc8on)
-        rospy.logwarn("GAIN:        %s%%", self.gain * 100)
-        rospy.logwarn("MOTOR TIME:  %s us", self.mo_time)
-        rospy.logwarn("CLOCKWISE:   %s", self.scanright)
-        rospy.logwarn("SPEED:       %s m/s", self.speed)
 
     @classmethod
     def to_sonar_angles(cls, rad):
@@ -734,3 +725,25 @@ class TritechMicron(object):
             Angle in radians.
         """
         return angle / 3200.0 * math.pi
+
+
+class Resolution(object):
+
+    """Sonar mechanical resolution enumeration.
+
+    The mechanical resolution is the angle the step motor rotates per scan line
+    in radians. A higher resolution slows down the scan.
+
+    Set as such:
+
+        with TritechMicron() as sonar:
+            sonar.set(step=Resolution.LOW)
+
+    Other resolutions can also be used, but these are the ones documented by
+    Tritech.
+    """
+
+    LOW = TritechMicron.to_radians(32)
+    MEDIUM = TritechMicron.to_radians(16)
+    HIGH = TritechMicron.to_radians(8)
+    ULTIMATE = TritechMicron.to_radians(4)

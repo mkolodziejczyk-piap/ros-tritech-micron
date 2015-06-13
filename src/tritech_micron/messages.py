@@ -3,7 +3,6 @@
 """Tritech Micron Sonar messages."""
 
 __author__ = "Erin Havens, Anass Al-Wohoush"
-__version__ = "0.2.0"
 
 
 class Message(object):
@@ -14,7 +13,7 @@ class Message(object):
     VERSION_DATA = 1
     HEAD_DATA = 2  # The MSG reply in response to SEND_DATA commands.
     SPECT_DATA = 3
-    ALIVE = 4  # On power-up, the broadcast state of Motor, Transducer, Params.
+    ALIVE = 4  # On power-up, the broadcast state of motor, transducer, params.
     PRG_ACK = 5
     BB_USER_DATA = 6
     TEST_DATA = 7
@@ -53,6 +52,14 @@ class Message(object):
 
     @classmethod
     def to_string(cls, id):
+        """Gets human-readable name corresponding to message ID.
+
+        Args:
+            id: Message ID.
+
+        Returns:
+            Human-readable string.
+        """
         for attr, value in cls.__dict__.iteritems():
             if value == id:
                 return attr
@@ -61,6 +68,14 @@ class Message(object):
 
     @classmethod
     def from_string(cls, name):
+        """Gets message ID corresponding to human-readable name.
+
+        Args:
+            name: Human-readable string.
+
+        Returns:
+            Message ID.
+        """
         if hasattr(cls, name):
             return cls.__getattribute__(name)
         else:

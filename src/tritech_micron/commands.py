@@ -5,7 +5,6 @@
 import bitstring
 
 __author__ = "Anass Al-Wohoush, Erin Havens"
-__version__ = "0.5.0"
 
 
 class Command(object):
