@@ -12,13 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_python_setup()
 
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-  sensor_msgs
-  geometry_msgs
-)
-
 generate_dynamic_reconfigure_options(
   cfg/Scan.cfg
 )

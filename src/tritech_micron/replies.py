@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar replies."""
+"""Tritech Micron replies."""
 
 from messages import Message
 from bitstring import ReadError

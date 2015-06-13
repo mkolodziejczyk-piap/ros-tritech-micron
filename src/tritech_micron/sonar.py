@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar."""
+"""Tritech Micron sonar."""
 
 import math
 import rospy
@@ -16,7 +16,7 @@ __author__ = "Anass Al-Wohoush"
 
 class TritechMicron(object):
 
-    """Tritech Micron Sonar.
+    """Tritech Micron sonar.
 
     In order for attribute changes to immediately be reflected on the device,
     use the set() method with the appropriate keyword.
@@ -59,12 +59,11 @@ class TritechMicron(object):
         step: Mechanical resolution (Resolution enumeration).
     """
 
-    def __init__(self, port="/dev/sonar", inverted=False, **kwargs):
+    def __init__(self, port="/dev/sonar", **kwargs):
         """Constructs Sonar object.
 
         Args:
             port: Serial port (default: /dev/sonar).
-            inverted: Whether sonar is mounted upside down (default: False).
             kwargs: Key-word arguments to pass to set() on initialization.
         """
         # Parameter defaults.
@@ -73,7 +72,7 @@ class TritechMicron(object):
         self.adc8on = True
         self.continuous = True
         self.gain = 0.40
-        self.inverted = inverted
+        self.inverted = False
         self.left_limit = TritechMicron.to_radians(0)
         self.mo_time = 250
         self.nbins = 200
@@ -83,10 +82,14 @@ class TritechMicron(object):
         self.speed = 1500.0
         self.step = Resolution.LOW
 
-        # Override defaults.
-        for key, value in kwargs.iteritems():
-            if hasattr(self, key):
+        # Override defaults with key-word arguments or ROS parameters.
+        for key, value in self.__dict__.iteritems():
+            if key in kwargs:
                 self.__setattr__(key, value)
+            else:
+                param = "{}/{}".format(rospy.get_name(), key)
+                if rospy.has_param(param):
+                    self.__setattr__(key, rospy.get_param(param))
 
         # Connection properties.
         self.port = port
@@ -108,7 +111,6 @@ class TritechMicron(object):
         self.clock = datetime.timedelta(0)
         self._time_offset = datetime.timedelta(0)
         self.preempted = False
-        self.paused = False
 
     def __enter__(self):
         """Initializes sonar for first use.
@@ -145,6 +147,14 @@ class TritechMicron(object):
 
         # Set default properties.
         self.set(force=True)
+
+        # Wait for settings to go through.
+        while not self.has_cfg or self.no_params:
+            rospy.loginfo(
+                "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
+                self.has_cfg, self.no_params
+            )
+            self.update()
 
         rospy.loginfo("Sonar is ready for use")
 
@@ -415,21 +425,7 @@ class TritechMicron(object):
             payload.append(chunk)
 
         self.send(Message.HEAD_COMMAND, payload)
-
-        # Wait up to 3 seconds until sonar acknowledges properties.
-        # Sometimes the sonar says it's not properly configured, but it's
-        # lying.
-        end = datetime.datetime.now() + datetime.timedelta(seconds=3)
-        while ((not self.has_cfg or self.no_params)
-                and datetime.datetime.now() < end):
-            rospy.logdebug(
-                "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
-                self.has_cfg, self.no_params
-            )
-            self.send(Message.HEAD_COMMAND, payload)
-            self.update()
-
-        rospy.logwarn("Parameters are set")
+        rospy.logwarn("Parameters are sent")
 
     def reverse(self):
         """Instantaneously reverses scan direction."""
@@ -492,15 +488,10 @@ class TritechMicron(object):
             self.send(Message.SEND_DATA, payload)
 
         # Scan until stopped.
-        self.paused = False
         self.preempted = False
         while not self.preempted:
             # Pings the sonar.
             ping()
-
-            #Wait while scan is paused.
-            while self.paused:
-                pass
 
             # Get the current heading data.
             head_data = self.get(Message.HEAD_DATA, wait=1)
@@ -657,16 +648,6 @@ class TritechMicron(object):
         rospy.logwarn("Preempting scan...")
         self.preempted = True
 
-    def pause(self):
-        """Pauses a scan in progress."""
-        rospy.logwarn("Pausing scan...")
-        self.paused = True
-
-    def resume(self):
-        """Resumes a scan in progress."""
-        rospy.logwarn("Resuming scan...")
-        self.paused = False
-
     def reboot(self):
         """Reboots Sonar.
 
@@ -765,7 +746,9 @@ class Resolution(object):
     Other resolutions can also be used, but these are the ones documented by
     Tritech.
     """
-
+    FASTEST = TritechMicron.to_radians(255)  # Not recommended.
+    FASTER = TritechMicron.to_radians(128)  # Not recommended.
+    FAST = TritechMicron.to_radians(64)  # Not recommended.
     LOW = TritechMicron.to_radians(32)
     MEDIUM = TritechMicron.to_radians(16)
     HIGH = TritechMicron.to_radians(8)

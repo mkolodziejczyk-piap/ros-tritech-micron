@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar exceptions."""
+"""Tritech Micron exceptions."""
 
 __author__ = "Anass Al-Wohoush"
 

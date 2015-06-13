@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar messages."""
+"""Tritech Micron messages."""
 
 __author__ = "Erin Havens, Anass Al-Wohoush"
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar package."""
+"""Tritech Micron sonar package."""
 
 from sonar import TritechMicron
 

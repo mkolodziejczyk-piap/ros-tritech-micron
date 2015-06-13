@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar commands."""
+"""Tritech Micron commands."""
 
 import bitstring
 

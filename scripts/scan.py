@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar scanner.
+"""Tritech Micron sonar scanner.
 
 This publishes one PointCloud message per scan slice. In order to visualize in
-rviz, play with the 'Decay Time' parameter.
+rviz, play with the 'Decay Time' parameter. This node also provides parameters
+that can be dynamically reconfigured.
 """
 
 import math
@@ -65,17 +66,14 @@ def reconfigure(config, level):
     Returns:
         Configuration.
     """
-    rospy.logwarn("RECONFIGURING SONAR: {}".format(config))
+    rospy.loginfo("Reconfiguring sonar: %r, %r", config, level)
 
     # Remove additional keys.
     if "groups" in config:
         config.pop("groups")
 
     # Set parameters.
-    sonar.pause()
-    # sonar.reboot()
     sonar.set(**config)
-    sonar.resume()
     return config
 
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron Sonar serial communication handler."""
+"""Tritech Micron serial communication handler."""
 
 import rospy
 import serial
