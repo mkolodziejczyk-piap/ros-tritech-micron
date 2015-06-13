@@ -4,11 +4,11 @@
 
 import math
 import rospy
+import serial
 import datetime
 import bitstring
 import exceptions
 from socket import Socket
-from timeout import timeout
 from messages import Message
 
 __author__ = "Anass Al-Wohoush"
@@ -108,6 +108,7 @@ class TritechMicron(object):
         self.clock = datetime.timedelta(0)
         self._time_offset = datetime.timedelta(0)
         self.preempted = False
+        self.paused = False
 
     def __enter__(self):
         """Initializes sonar for first use.
@@ -175,22 +176,24 @@ class TritechMicron(object):
             raise exceptions.SonarNotInitialized(message)
 
         try:
-            with timeout(seconds=wait):
-                while True:
-                    reply = self.conn.get_reply()
-                    if reply.id == Message.ALIVE:
-                        self.__update_state(reply)
-                    if message is None:
-                        return reply
-                    if reply.id == message:
-                        rospy.logdebug("Found %s message", name)
-                        return reply
-                    elif reply.id != Message.ALIVE:
-                        rospy.logwarn(
-                            "Received unexpected %s message",
-                            reply.type
-                        )
-        except (exceptions.PacketCorrupted, exceptions.TimeoutError) as e:
+            end = datetime.datetime.now() + datetime.timedelta(seconds=wait)
+            while datetime.datetime.now() < end:
+                reply = self.conn.get_reply()
+                if reply.id == Message.ALIVE:
+                    self.__update_state(reply)
+                if message is None:
+                    return reply
+                if reply.id == message:
+                    rospy.logdebug("Found %s message", name)
+                    return reply
+                elif reply.id != Message.ALIVE:
+                    rospy.logwarn(
+                        "Received unexpected %s message",
+                        reply.type
+                    )
+            raise exceptions.TimeoutError()
+        except (exceptions.PacketCorrupted, exceptions.TimeoutError,
+                serial.SerialException) as e:
             if message:
                 rospy.logerr("Failed to get %s message: %r", name, e)
             return None
@@ -413,12 +416,17 @@ class TritechMicron(object):
 
         self.send(Message.HEAD_COMMAND, payload)
 
-        # Wait until sonar acknowledges properties.
-        while not self.has_cfg or self.no_params:
+        # Wait up to 3 seconds until sonar acknowledges properties.
+        # Sometimes the sonar says it's not properly configured, but it's
+        # lying.
+        end = datetime.datetime.now() + datetime.timedelta(seconds=3)
+        while ((not self.has_cfg or self.no_params)
+                and datetime.datetime.now() < end):
             rospy.logdebug(
                 "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
                 self.has_cfg, self.no_params
             )
+            self.send(Message.HEAD_COMMAND, payload)
             self.update()
 
         rospy.logwarn("Parameters are set")
@@ -484,10 +492,15 @@ class TritechMicron(object):
             self.send(Message.SEND_DATA, payload)
 
         # Scan until stopped.
+        self.paused = False
         self.preempted = False
         while not self.preempted:
             # Pings the sonar.
             ping()
+
+            #Wait while scan is paused.
+            while self.paused:
+                pass
 
             # Get the current heading data.
             head_data = self.get(Message.HEAD_DATA, wait=1)
@@ -643,6 +656,16 @@ class TritechMicron(object):
         """Preempts a scan in progress."""
         rospy.logwarn("Preempting scan...")
         self.preempted = True
+
+    def pause(self):
+        """Pauses a scan in progress."""
+        rospy.logwarn("Pausing scan...")
+        self.paused = True
+
+    def resume(self):
+        """Resumes a scan in progress."""
+        rospy.logwarn("Resuming scan...")
+        self.paused = False
 
     def reboot(self):
         """Reboots Sonar.

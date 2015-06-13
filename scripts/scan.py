@@ -9,10 +9,12 @@ rviz, play with the 'Decay Time' parameter.
 
 import math
 import rospy
+from std_msgs.msg import Float64
 from geometry_msgs.msg import Point32
-from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
-from sensor_msgs.msg import ChannelFloat32
+from tritech_micron.cfg import ScanConfig
+from dynamic_reconfigure.server import Server
+from sensor_msgs.msg import ChannelFloat32, PointCloud
 
 __author__ = "Anass Al-Wohoush"
 
@@ -53,25 +55,62 @@ def to_pointcloud(range_scale, heading, bins, frame="odom"):
     return cloud
 
 
+def reconfigure(config, level):
+    """Reconfigures sonar dynamically.
+
+    Args:
+        config: New configuration.
+        level: Level bitmask.
+
+    Returns:
+        Configuration.
+    """
+    rospy.logwarn("RECONFIGURING SONAR: {}".format(config))
+
+    # Remove additional keys.
+    if "groups" in config:
+        config.pop("groups")
+
+    # Set parameters.
+    sonar.pause()
+    # sonar.reboot()
+    sonar.set(**config)
+    sonar.resume()
+    return config
+
+
+def publish(sonar, range, heading, bins):
+    """Publishes PointCloud of current scan slice on callback.
+
+    Args:
+        sonar: Sonar instance.
+        range: Current scan range in meters.
+        heading: Current heading in radians.
+        bins: Integer array with the intensity at every bin.
+    """
+    heading_pub.publish(heading)
+    cloud = to_pointcloud(range, heading, bins)
+    cloud_pub.publish(cloud)
+
+
 if __name__ == "__main__":
     # Initialize node and publisher.
-    rospy.init_node("tritech_micron")
-    pub = rospy.Publisher("/sonar/cloud", PointCloud, queue_size=800)
-
-    def publish(sonar, range, heading, bins):
-        """Publishes PointCloud of current scan slice on callback.
-
-        Args:
-            sonar: Sonar instance.
-            range: Current scan range in meters.
-            heading: Current heading in radians.
-            bins: Integer array with the intensity at every bin.
-        """
-        cloud = to_pointcloud(range, heading, bins)
-        pub.publish(cloud)
+    rospy.init_node("tritech_micron", log_level=rospy.INFO)
+    cloud_pub = rospy.Publisher(
+        "/tritech_micron/scan",
+        PointCloud, queue_size=800
+    )
+    heading_pub = rospy.Publisher(
+        "/tritech_micron/heading",
+        Float64, queue_size=800
+    )
 
     with TritechMicron() as sonar:
         try:
+            # Initialize dynamic reconfigure server and scan.
+            Server(ScanConfig, reconfigure)
+
+            # Scan.
             sonar.scan(feedback_callback=publish)
         except KeyboardInterrupt:
             sonar.preempt()
