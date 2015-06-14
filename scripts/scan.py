@@ -10,29 +10,28 @@ that can be dynamically reconfigured.
 
 import math
 import rospy
-from std_msgs.msg import Float64
-from geometry_msgs.msg import Point32
 from tritech_micron import TritechMicron
 from tritech_micron.cfg import ScanConfig
 from dynamic_reconfigure.server import Server
+from tf.transformations import quaternion_from_euler
 from sensor_msgs.msg import ChannelFloat32, PointCloud
+from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 
 __author__ = "Anass Al-Wohoush"
 
 
-def to_pointcloud(range_scale, heading, bins, frame="odom"):
+def to_pointcloud(range_scale, heading, bins):
     """Converts a scan slice to a PointCloud message.
 
     Args:
         range_scale: Range of scan.
         heading: Slice heading in radians.
         bins: Array of intensities of each return.
-        frame: Name of sensor frame.
 
     Returns:
         A sensor_msgs.msg.PointCloud.
     """
-    # Construct PointCloud message
+    # Construct PointCloud message.
     cloud = PointCloud()
     cloud.header.frame_id = frame
     cloud.header.stamp = rospy.get_rostime()
@@ -54,6 +53,30 @@ def to_pointcloud(range_scale, heading, bins, frame="odom"):
     cloud.channels = [channel]
 
     return cloud
+
+
+def to_posestamped(heading):
+    """Converts a heading to a PoseStamped message.
+
+    Args:
+        heading: Slice heading in radians.
+
+    Returns:
+        A geometry_msgs.msg.PoseStamped.
+    """
+    # Construct PoseStamped message.
+    posestamp = PoseStamped()
+    posestamp.header.frame_id = frame
+    posestamp.header.stamp = rospy.get_rostime()
+
+    # Convert to quaternion.
+    q = Quaternion(*quaternion_from_euler(0, 0, heading))
+
+    # Make Pose message.
+    pose = Pose(orientation=q)
+    posestamp.pose = pose
+
+    return posestamp
 
 
 def reconfigure(config, level):
@@ -78,7 +101,7 @@ def reconfigure(config, level):
 
 
 def publish(sonar, range, heading, bins):
-    """Publishes PointCloud of current scan slice on callback.
+    """Publishes PointCloud and PoseStamped of current scan slice on callback.
 
     Args:
         sonar: Sonar instance.
@@ -86,22 +109,23 @@ def publish(sonar, range, heading, bins):
         heading: Current heading in radians.
         bins: Integer array with the intensity at every bin.
     """
-    heading_pub.publish(heading)
+    # Publish heading as PoseStamped.
+    posestamp = to_posestamped(heading)
+    heading_pub.publish(posestamp)
+
+    # Publish data as PointCloud.
     cloud = to_pointcloud(range, heading, bins)
-    cloud_pub.publish(cloud)
+    scan_pub.publish(cloud)
 
 
 if __name__ == "__main__":
-    # Initialize node and publisher.
-    rospy.init_node("tritech_micron", log_level=rospy.INFO)
-    cloud_pub = rospy.Publisher(
-        "/tritech_micron/scan",
-        PointCloud, queue_size=800
-    )
-    heading_pub = rospy.Publisher(
-        "/tritech_micron/heading",
-        Float64, queue_size=800
-    )
+    # Initialize node and publishers.
+    rospy.init_node("tritech_micron")
+    scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
+    heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
+
+    # Get frame name.
+    frame = rospy.get_param("~frame", "odom")
 
     with TritechMicron() as sonar:
         try:

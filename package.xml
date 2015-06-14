@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package>
   <name>tritech_micron</name>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <description>
     This package provides ROS actions to control and communicate with the
     Tritech Micron sonar.
