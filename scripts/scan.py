@@ -126,8 +126,9 @@ if __name__ == "__main__":
 
     # Get frame name.
     frame = rospy.get_param("~frame", "odom")
+    port = rospy.get_param("~port", "/dev/sonar")
 
-    with TritechMicron() as sonar:
+    with TritechMicron(port=port) as sonar:
         try:
             # Initialize dynamic reconfigure server and scan.
             Server(ScanConfig, reconfigure)
