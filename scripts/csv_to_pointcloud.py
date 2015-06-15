@@ -6,6 +6,7 @@
 import csv
 import sys
 import rospy
+import bitstring
 from datetime import datetime
 from collections import namedtuple
 from sensor_msgs.msg import PointCloud
@@ -25,29 +26,75 @@ class Slice(object):
 
         Args:
             row: Current row as column array from CSV log.
-            min_distance: Minimum distance in meters.
-            min_intensity: Minimum intensity.
         """
-        # Extract the fields in order.
+        # Extract log properties.
         self.sof = str(row[0])
         self.timestamp = datetime.strptime(row[1], "%H:%M:%S.%f")
         self.node = int(row[2])
-        self.status = int(row[3])
-        self.hdctrl = int(row[4])
-        self.range = float(row[5]) / 10
-        self.gain = int(row[6])
-        self.slope = int(row[7])
-        self.ad_low = int(row[8])
-        self.ad_high = self.ad_low + int(row[9])
-        self.left_limit = int(row[10])
-        self.right_limit = int(row[11])
-        self.step = int(row[12])
+
+        # Scan angles information.
+        self.left_limit = TritechMicron.to_radians(int(row[10]))
+        self.right_limit = TritechMicron.to_radians(int(row[11]))
+        self.step = TritechMicron.to_radians(int(row[12]))
         self.heading = TritechMicron.to_radians(int(row[13]))
+        rospy.loginfo("Heading is now %f", self.heading)
+
+        # Get the head status byte:
+        #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
+        #   Bit 1:  'MotErr'. Motor has lost sync, re-send Parameters.
+        #   Bit 2:  'PrfSyncErr'. Always 0.
+        #   Bit 3:  'PrfPingErr'. Always 0.
+        #   Bit 4:  Whether adc8on is enabled.
+        #   Bit 5:  RESERVED (ignore).
+        #   Bit 6:  RESERVED (ignore).
+        #   Bit 7:  Message appended after last packet data reply.
+        _head_status = bitstring.pack("uint:8", int(row[3]))
+        rospy.logdebug("Head status byte is %s", _head_status)
+        if _head_status[-1]:
+            rospy.logerr("Head power loss detected")
+        if _head_status[-2]:
+            rospy.logerr("Motor lost sync")
+            self.set(force=True)
+
+        # Get the HdCtrl bytes to control operation:
+        #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
+        #   Bit 1:  cont            0: sector-scan  1: continuous
+        #   Bit 2:  scanright       0: left         1: right
+        #   Bit 3:  invert          0: upright      1: inverted
+        #   Bit 4:  motoff          0: on           1: off
+        #   Bit 5:  txoff           0: on           1: off (for testing)
+        #   Bit 6:  spare           0: default      1: N/A
+        #   Bit 7:  chan2           0: default      1: N/A
+        #   Bit 8:  raw             0: N/A          1: default
+        #   Bit 9:  hasmot          0: lol          1: has a motor (always)
+        #   Bit 10: applyoffset     0: default      1: heading offset
+        #   Bit 11: pingpong        0: default      1: side-scanning sonar
+        #   Bit 12: stareLLim       0: default      1: N/A
+        #   Bit 13: ReplyASL        0: N/A          1: default
+        #   Bit 14: ReplyThr        0: default      1: N/A
+        #   Bit 15: IgnoreSensor    0: default      1: emergencies
+        # Should be the same as what was sent.
+        hd_ctrl = bitstring.pack("uintle:16", int(row[4]))
+        hd_ctrl.byteswap()  # Little endian please.
+        self.inverted, self.scanright, self.continuous, self.adc8on = (
+            hd_ctrl.unpack("pad:12, bool, bool, bool, bool")
+        )
+        rospy.logdebug("Head control bytes are %s", hd_ctrl.bin)
+        rospy.logdebug("ADC8 mode %s", self.adc8on)
+        rospy.logdebug("Continuous mode %s", self.continuous)
+        rospy.logdebug("Scanning right %s", self.scanright)
+
+        # Decode data settings.
+        MAX_SIZE = 255 if self.adc8on else 15
+        self.range = float(row[5]) / 10
+        self.gain = float(row[6]) / 210
+        self.ad_low = int(row[8]) * 80.0 / MAX_SIZE
+        ad_span = int(row[9]) * 80.0 / MAX_SIZE
+        self.ad_high = self.ad_low + ad_span
+
+        # Scan data.
         self.nbins = int(row[14])
         self.bins = map(int, row[15:])
-
-        # Direction is encoded as the third bit in the HDCtrl bytes.
-        self.clockwise = self.hdctrl & 0b100 > 0
 
     def __str__(self):
         """Returns string representation of Slice."""
@@ -126,7 +173,7 @@ def main(path, rate, frame):
 
 if __name__ == "__main__":
     # Start node.
-    rospy.init_node("tritech_micron")
+    rospy.init_node("tritech_micron", log_level=rospy.DEBUG)
 
     # Get parameters.
     options = get_parameters()
