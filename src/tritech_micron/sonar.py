@@ -503,6 +503,11 @@ class TritechMicron(object):
         # Scan until stopped.
         self.preempted = False
         while not self.preempted:
+            # Preempt on ROS shutdown.
+            if rospy.is_shutdown():
+                self.preempt()
+                return
+
             # Ping the sonar.
             self._ping()
 
