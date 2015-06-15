@@ -134,6 +134,6 @@ if __name__ == "__main__":
             Server(ScanConfig, reconfigure)
 
             # Scan.
-            sonar.scan(feedback_callback=publish)
+            sonar.scan(callback=publish)
         except KeyboardInterrupt:
             sonar.preempt()

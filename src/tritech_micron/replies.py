@@ -15,7 +15,7 @@ class Reply(object):
 
     Attributes:
         id: Message ID.
-        type: Message ID human-readable name.
+        name: Message ID human-readable name.
         is_last: Whether packet is last in sequence.
         payload: Data excluding header and end character.
         sequence: Packet sequence.
@@ -35,7 +35,7 @@ class Reply(object):
         self.bitstream = bitstream
 
         self.id = 0
-        self.type = "NULL"
+        self.name = "<unknown>"
         self.is_last = False
         self.payload = None
         self.sequence = 0
@@ -118,7 +118,7 @@ class Reply(object):
             # Parse message ID and verify it's between 0-72.
             self.bitstream.bytepos = 10
             self.id = self.bitstream.read("uint:8")
-            self.type = Message.to_string(self.id)
+            self.name = Message.to_string(self.id)
             if not 0 <= self.id <= 72:
                 raise PacketCorrupted("Invalid message ID: {}".format(self.id))
 

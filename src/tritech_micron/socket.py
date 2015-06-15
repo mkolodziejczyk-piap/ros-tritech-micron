@@ -84,7 +84,7 @@ class Socket(object):
                     # Keep looking.
                     continue
 
-            rospy.logdebug("Received %s: %s", reply.type, reply.payload)
+            rospy.logdebug("Received %s: %s", reply.name, reply.payload)
             return reply
         except select.error as e:
             # Set SIGINT as KeyboardInterrupt correctly, because pyserial has

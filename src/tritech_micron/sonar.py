@@ -171,42 +171,58 @@ class TritechMicron(object):
 
         Args:
             message: Message to expect (default: first to come in).
-            wait: Seconds to wait until received (default: 2).
+            wait: Seconds to wait until received if a specific message is
+                required (default: 2).
 
         Returns:
-            Reply if successful, None otherwise.
+            Reply.
 
         Raises:
             SonarNotInitialized: Attempt reading serial without opening port.
+            TimeoutError: Process timed out while waiting for specific message.
         """
-        if message:
-            name = Message.to_string(message)
-            rospy.logdebug("Waiting for %s message", name)
+        # Verify sonar is initialized.
         if not self.initialized:
-            raise exceptions.SonarNotInitialized(message)
+            raise exceptions.SonarNotInitialized()
 
-        try:
-            end = datetime.datetime.now() + datetime.timedelta(seconds=wait)
-            while datetime.datetime.now() < end:
+        expected_name = None
+        if message:
+            expected_name = Message.to_string(message)
+            rospy.logdebug("Waiting for %s message", expected_name)
+
+        # Determine end time.
+        end = datetime.datetime.now() + datetime.timedelta(seconds=wait)
+
+        # Wait until received if a specific message ID is requested, otherwise
+        # wait forever.
+        while message is None or datetime.datetime.now() < end:
+            try:
                 reply = self.conn.get_reply()
+
+                # Update state if mtAlive.
                 if reply.id == Message.ALIVE:
                     self.__update_state(reply)
+
+                # If first was asked, respond immediately.
                 if message is None:
                     return reply
+
+                # Otherwise, verify reply ID.
                 if reply.id == message:
-                    rospy.logdebug("Found %s message", name)
+                    rospy.logdebug("Found %s message", expected_name)
                     return reply
                 elif reply.id != Message.ALIVE:
                     rospy.logwarn(
                         "Received unexpected %s message",
-                        reply.type
+                        reply.name
                     )
-            raise exceptions.TimeoutError()
-        except (exceptions.PacketCorrupted, exceptions.TimeoutError,
-                serial.SerialException) as e:
-            if message:
-                rospy.logerr("Failed to get %s message: %r", name, e)
-            return None
+            except exceptions.PacketCorrupted, serial.SerialException:
+                # Keep trying.
+                continue
+
+        # Timeout.
+        rospy.logerror("Timed out before receiving message: %s", expected_name)
+        raise exceptions.TimeoutError()
 
     def send(self, command, payload=None):
         """Sends command and returns reply.
@@ -433,26 +449,42 @@ class TritechMicron(object):
         self.send(Message.HEAD_COMMAND, payload)
         self.scanright = not self.scanright
 
-    def scan(self, feedback_callback, complete_callback=None, **kwargs):
+    def _ping(self):
+        """Commands the sonar to ping once."""
+        # Get current time in milliseconds.
+        now = datetime.datetime.now()
+        current_time = datetime.timedelta(
+            hours=now.hour, minutes=now.minute,
+            seconds=now.second, microseconds=0
+        )
+        payload = bitstring.pack(
+            "uintle:32",
+            current_time.total_seconds() * 1000
+        )
+
+        # Reset offset for up time.
+        self._time_offset = current_time - self.up_time
+
+        # Send command.
+        self.send(Message.SEND_DATA, payload)
+
+    def scan(self, callback, **kwargs):
         """Sends scan command.
 
-        This method is blocking but calls feedback_callback at every reply with
-        the heading and a new dataset and complete_callback with the current
-        heading when scan is stopped.
+        This method is blocking but calls callback at every reply with the
+        heading and a new dataset.
 
-        To stop a scan, simply call the preempt(). Otherwise, the scan will
-        never end.
+        To stop a scan, simply call the preempt() method. Otherwise, the scan
+        will run forever.
 
         The intensity at every bin is an integer value ranging between 0 and
         255.
 
         Args:
-            feedback_callback: Callback for feedback.
+            callback: Callback for feedback.
                 Called with args=(sonar, range, heading, bins)
                 where range is in meters, heading is in radians
                 and bins is an integer array with the intensity at every bin.
-            complete_callback: Callback on completion or halt (optional).
-                Called with args=(sonar, heading,) where heading is in radians.
             kwargs: Key-word arguments to pass to set() before scanning.
 
         Raises:
@@ -468,36 +500,18 @@ class TritechMicron(object):
         if kwargs:
             self.set(**kwargs)
 
-        def ping():
-            """Commands the sonar to ping."""
-            # Get current time in milliseconds.
-            now = datetime.datetime.now()
-            current_time = datetime.timedelta(
-                hours=now.hour, minutes=now.minute,
-                seconds=now.second, microseconds=0
-            )
-            payload = bitstring.pack(
-                "uintle:32",
-                current_time.total_seconds() * 1000
-            )
-
-            # Reset offset for on time.
-            self._time_offset = current_time - self.up_time
-
-            # Send command.
-            self.send(Message.SEND_DATA, payload)
-
         # Scan until stopped.
         self.preempted = False
         while not self.preempted:
-            # Pings the sonar.
-            ping()
+            # Ping the sonar.
+            self._ping()
 
             # Get the current heading data.
-            head_data = self.get(Message.HEAD_DATA, wait=1)
-            if not head_data:
+            try:
+                data = self.get(Message.HEAD_DATA, wait=1).payload
+            except exceptions.TimeoutError:
+                # Try again.
                 continue
-            data = head_data.payload
 
             # Get the total number of bytes.
             count = data.read(16).uintle
@@ -506,6 +520,7 @@ class TritechMicron(object):
             # The device type should be 0x11 for a DST Sonar.
             device_type = data.read(8)
             if device_type.uint != 0x11:
+                # Packet is likely corrupted, try again.
                 rospy.logerr("Unexpected device type: %s", device_type.hex)
                 continue
 
@@ -630,18 +645,14 @@ class TritechMicron(object):
             else:
                 bins = [data.read(4).uint for i in range(dbytes * 2)]
 
-            # Run feedback callback.
-            feedback_callback(self, self.range, self.heading, bins)
+            # Run callback.
+            callback(self, self.range, self.heading, bins)
 
             # Proceed or not.
             if not self.scanright and sweep == 1:
                 rospy.loginfo("Reached left limit")
             elif self.scanright and sweep == 2:
                 rospy.loginfo("Reached right limit")
-
-        # Run completion callback.
-        if complete_callback is not None:
-            complete_callback(self, self.heading)
 
     def preempt(self):
         """Preempts a scan in progress."""
@@ -661,10 +672,18 @@ class TritechMicron(object):
     def update(self):
         """Updates Sonar states from mtAlive message.
 
+        Note: This is a blocking function.
+
         Raises:
             SonarNotInitialized: Sonar is not initialized.
         """
-        self.get(Message.ALIVE)
+        # Wait until successful no matter what.
+        while True:
+            try:
+                self.get(Message.ALIVE)
+                return
+            except exceptions.TimeoutError:
+                continue
 
     def __update_state(self, alive):
         """Updates Sonar states from mtAlive message.
