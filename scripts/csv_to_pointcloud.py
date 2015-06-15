@@ -123,7 +123,7 @@ class Slice(object):
         return str(self.heading)
 
 
-def main(path, rate, frame):
+def parse(path, frame):
     """Parses scan logs and publishes LaserScan messages at set frequency.
 
     This publishes on two topics:
@@ -132,7 +132,6 @@ def main(path, rate, frame):
 
     Args:
         path: Path to CSV log.
-        rate: Publishing rate in Hz.
         frame: Name of sensor frame.
     """
     # Create publishers.
@@ -140,13 +139,12 @@ def main(path, rate, frame):
     range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
 
-    rate = rospy.Rate(rate)  # Hz.
-
     with open(path) as data:
         # Read data and ignore header.
         info = csv.reader(data)
         next(info)
 
+        previous = None
         for row in info:
             # Break cleanly if requested.
             if rospy.is_shutdown():
@@ -169,7 +167,12 @@ def main(path, rate, frame):
             )
             scan_pub.publish(cloud)
 
-            rate.sleep()
+            # Sleep to publish at correct rate.
+            if previous:
+                dt = scan_slice.timestamp - previous.timestamp
+                rospy.sleep(dt.total_seconds())
+
+            previous = scan_slice
 
 
 if __name__ == "__main__":
@@ -178,7 +181,6 @@ if __name__ == "__main__":
 
     # Get parameters.
     path = rospy.get_param("~csv", None)
-    rate = rospy.get_param("~rate", 30)
     frame = rospy.get_param("~frame", "odom")
 
     if path is None:
@@ -186,7 +188,7 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     try:
-        main(path, rate, frame)
+        parse(path, frame)
     except IOError:
         rospy.logfatal("Could not find file specified.")
     except rospy.ROSInterruptException:
