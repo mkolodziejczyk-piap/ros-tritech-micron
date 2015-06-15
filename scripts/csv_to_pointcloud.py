@@ -16,7 +16,6 @@ import rospy
 import bitstring
 from datetime import datetime
 from std_msgs.msg import Float64
-from collections import namedtuple
 from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
 from geometry_msgs.msg import PoseStamped

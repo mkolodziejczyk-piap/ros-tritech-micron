@@ -103,24 +103,24 @@ def reconfigure(config, level):
     return config
 
 
-def publish(sonar, range, heading, bins):
+def publish(sonar, range_scale, heading, bins):
     """Publishes PointCloud and PoseStamped of current scan slice on callback.
 
     Args:
         sonar: Sonar instance.
-        range: Current scan range in meters.
+        range_scale: Current scan range in meters.
         heading: Current heading in radians.
         bins: Integer array with the intensity at every bin.
     """
     # Publish range as Float64.
-    range_pub.publish(range)
+    range_pub.publish(range_scale)
 
     # Publish heading as PoseStamped.
     posestamp = to_posestamped(heading, frame)
     heading_pub.publish(posestamp, frame)
 
     # Publish data as PointCloud.
-    cloud = to_pointcloud(range, heading, bins)
+    cloud = to_pointcloud(range_scale, heading, bins)
     scan_pub.publish(cloud)
 
 
