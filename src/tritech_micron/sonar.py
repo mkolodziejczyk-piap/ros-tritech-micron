@@ -614,10 +614,10 @@ class TritechMicron(object):
             # The full range is between ADLow and ADLow + ADSpan.
             MAX_SIZE = 255 if self.adc8on else 15
             ad_span = data.read(8).uintle
-            self.ad_low = data.read(8).uintle
-            min_intensity = self.ad_low * 80.0 / MAX_SIZE
+            ad_low = data.read(8).uintle
+            self.ad_low = ad_low * 80.0 / MAX_SIZE
             span_intensity = ad_span * 80.0 / MAX_SIZE
-            self.ad_high = min_intensity + span_intensity
+            self.ad_high = self.ad_low + span_intensity
             rospy.logdebug("AD range is %f to %f", self.ad_low, self.ad_high)
 
             # Heading offset is ignored.
