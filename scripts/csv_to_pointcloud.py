@@ -27,10 +27,8 @@ class Slice(object):
         Args:
             row: Current row as column array from CSV log.
         """
-        # Extract log properties.
-        self.sof = str(row[0])
+        # Extract timestamp.
         self.timestamp = datetime.strptime(row[1], "%H:%M:%S.%f")
-        self.node = int(row[2])
 
         # Scan angles information.
         self.left_limit = TritechMicron.to_radians(int(row[10]))
@@ -96,9 +94,30 @@ class Slice(object):
         self.nbins = int(row[14])
         self.bins = map(int, row[15:])
 
+        # Set other defaults.
+        self.mo_time = 250
+        self.speed = 1500.0
+
+        # Set ROS parameters as if data was from API.
+        self.set_parameters()
+
     def __str__(self):
         """Returns string representation of Slice."""
         return str(self.heading)
+
+    def set_parameters(self):
+        """Sets all relevant ROS parameters to simulate dynamic_reconfigure
+        environment.
+        """
+        properties = [
+            "adc8on", "continuous", "scanright", "step",
+            "ad_low", "ad_high", "left_limit", "right_limit",
+            "mo_time", "range", "nbins", "gain", "speed",
+            "inverted"
+        ]
+        for prop in properties:
+            value = self.__getattribute__(prop)
+            rospy.set_param("~{}".format(prop), value)
 
 
 def get_parameters():
