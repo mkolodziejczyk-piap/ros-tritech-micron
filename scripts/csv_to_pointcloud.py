@@ -1,7 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tritech Micron CSV to LaserScan and PointCloud."""
+"""Tritech Micron CSV to PointCloud.
+
+This script converts a CSV logged by the Tritech Windows utility to ROS
+messages.
+
+Note: This does not currently support decoding Tritech's V4LOG file format, so
+you must first convert them to CSV using Tritech's Windows utility.
+"""
 
 import csv
 import sys
