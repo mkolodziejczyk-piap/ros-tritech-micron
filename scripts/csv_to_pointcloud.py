@@ -38,12 +38,10 @@ class Slice(object):
         heading: Current sonar heading in radians.
         inverted: Whether the sonar is mounted upside down.
         left_limit: Left limit of sector scan in radians.
-        mo_time: High speed limit of the motor in units of 10 microseconds.
         nbins: Number of bins per scan line.
         range: Scan range in meters.
         right_limit: Right limit of sector scans in radians.
         scanright: Whether the sonar scanning direction is clockwise.
-        speed: Speed of sound in medium.
         step: Mechanical resolution (Resolution enumeration).
     """
 
@@ -120,55 +118,9 @@ class Slice(object):
         self.nbins = int(row[14])
         self.bins = map(int, row[15:])
 
-        # Set other defaults.
-        self.mo_time = 250
-        self.speed = 1500.0
-
-        # Set ROS parameters as if data was from API.
-        self.set_parameters()
-
     def __str__(self):
         """Returns string representation of Slice."""
         return str(self.heading)
-
-    def set_parameters(self):
-        """Sets all relevant ROS parameters to simulate dynamic_reconfigure
-        environment.
-        """
-        properties = [
-            "adc8on", "continuous", "scanright", "step",
-            "ad_low", "ad_high", "left_limit", "right_limit",
-            "mo_time", "range", "nbins", "gain", "speed",
-            "inverted"
-        ]
-        for prop in properties:
-            value = self.__getattribute__(prop)
-            rospy.set_param("~{}".format(prop), value)
-
-
-def get_parameters():
-    """Gets relevant ROS parameters into a named tuple.
-
-    Relevant properties are:
-        ~csv: Path to CSV log.
-        ~rate: Publishing rate in Hz.
-        ~frame: Name of sensor frame.
-
-    Returns:
-        Named tuple with the following properties:
-            path: Path to CSV log.
-            rate: Publishing rate in Hz.
-            frame: Name of sensor frame.
-    """
-    options = namedtuple("Parameters", [
-        "path", "rate", "frame", "width"
-    ])
-
-    options.path = rospy.get_param("~csv", None)
-    options.rate = rospy.get_param("~rate", 30)
-    options.frame = rospy.get_param("~frame", "odom")
-
-    return options
 
 
 def main(path, rate, frame):
@@ -183,7 +135,7 @@ def main(path, rate, frame):
         rate: Publishing rate in Hz.
         frame: Name of sensor frame.
     """
-    # Create publisher.
+    # Create publishers.
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
     range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
@@ -222,16 +174,19 @@ def main(path, rate, frame):
 
 if __name__ == "__main__":
     # Start node.
-    rospy.init_node("tritech_micron", log_level=rospy.DEBUG)
+    rospy.init_node("tritech_micron")
 
     # Get parameters.
-    options = get_parameters()
-    if options.path is None:
+    path = rospy.get_param("~csv", None)
+    rate = rospy.get_param("~rate", 30)
+    frame = rospy.get_param("~frame", "odom")
+
+    if path is None:
         rospy.logfatal("Please specify a file as _csv:=path/to/file.")
         sys.exit(-1)
 
     try:
-        main(options.path, options.rate, options.frame)
+        main(path, rate, frame)
     except IOError:
         rospy.logfatal("Could not find file specified.")
     except rospy.ROSInterruptException:
