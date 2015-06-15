@@ -10,6 +10,7 @@ that can be dynamically reconfigured.
 
 import math
 import rospy
+from std_msgs.msg import Float64
 from tritech_micron import TritechMicron
 from tritech_micron.cfg import ScanConfig
 from dynamic_reconfigure.server import Server
@@ -111,6 +112,9 @@ def publish(sonar, range, heading, bins):
         heading: Current heading in radians.
         bins: Integer array with the intensity at every bin.
     """
+    # Publish range as Float64.
+    range_pub.publish(range)
+
     # Publish heading as PoseStamped.
     posestamp = to_posestamped(heading, frame)
     heading_pub.publish(posestamp, frame)
@@ -124,6 +128,7 @@ if __name__ == "__main__":
     # Initialize node and publishers.
     rospy.init_node("tritech_micron")
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
+    range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
 
     # Get frame name and port.

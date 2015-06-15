@@ -15,6 +15,7 @@ import sys
 import rospy
 import bitstring
 from datetime import datetime
+from std_msgs.msg import Float64
 from collections import namedtuple
 from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
@@ -26,7 +27,25 @@ __author__ = "Anass Al-Wohoush, Max Krogius"
 
 class Slice(object):
 
-    """Scan slice."""
+    """Scan slice.
+
+    Attributes:
+        ad_high: Amplitude in db to be mapped to max intensity (0-80 db).
+        ad_low: Amplitude in dB to be mapped to 0 intensity (0-80 db).
+        adc8on: True if 8-bit resolution ADC, otherwise 4-bit.
+        continuous: True if continuous scan, otherwise sector scan.
+        gain: Initial gain percentage (0.00-1.00).
+        heading: Current sonar heading in radians.
+        inverted: Whether the sonar is mounted upside down.
+        left_limit: Left limit of sector scan in radians.
+        mo_time: High speed limit of the motor in units of 10 microseconds.
+        nbins: Number of bins per scan line.
+        range: Scan range in meters.
+        right_limit: Right limit of sector scans in radians.
+        scanright: Whether the sonar scanning direction is clockwise.
+        speed: Speed of sound in medium.
+        step: Mechanical resolution (Resolution enumeration).
+    """
 
     def __init__(self, row):
         """Constructs Slice object.
@@ -166,6 +185,7 @@ def main(path, rate, frame):
     """
     # Create publisher.
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
+    range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
 
     rate = rospy.Rate(rate)  # Hz.
@@ -183,11 +203,14 @@ def main(path, rate, frame):
             # Parse row.
             scan_slice = Slice(row)
 
-            # Publish PoseStamped.
+            # Publish range as Float64.
+            range_pub.publish(scan_slice.range)
+
+            # Publish heading as PoseStamped.
             pose = to_posestamped(scan_slice.heading, frame)
             heading_pub.publish(pose)
 
-            # Publish PointCloud.
+            # Publish data as PointCloud.
             cloud = to_pointcloud(
                 scan_slice.range, scan_slice.heading,
                 scan_slice.bins, frame
