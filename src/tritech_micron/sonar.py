@@ -540,6 +540,11 @@ class TritechMicron(object):
             #   Bit 7:  Message appended after last packet data reply.
             _head_status = data.read(8).bin
             rospy.logdebug("Head status byte is %s", _head_status)
+            if _head_status[-1]:
+                rospy.logerr("Head power loss detected")
+            if _head_status[-2]:
+                rospy.logerr("Motor lost sync")
+                self.set(force=True)
 
             # Get the sweep code. Its value should correspond to:
             #   0: Scanning normal.
