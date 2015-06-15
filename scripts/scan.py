@@ -20,13 +20,14 @@ from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 __author__ = "Anass Al-Wohoush"
 
 
-def to_pointcloud(range_scale, heading, bins):
+def to_pointcloud(range_scale, heading, bins, frame):
     """Converts a scan slice to a PointCloud message.
 
     Args:
         range_scale: Range of scan.
         heading: Slice heading in radians.
         bins: Array of intensities of each return.
+        frame: Frame ID.
 
     Returns:
         A sensor_msgs.msg.PointCloud.
@@ -55,11 +56,12 @@ def to_pointcloud(range_scale, heading, bins):
     return cloud
 
 
-def to_posestamped(heading):
+def to_posestamped(heading, frame):
     """Converts a heading to a PoseStamped message.
 
     Args:
         heading: Slice heading in radians.
+        frame: Frame ID.
 
     Returns:
         A geometry_msgs.msg.PoseStamped.
@@ -110,8 +112,8 @@ def publish(sonar, range, heading, bins):
         bins: Integer array with the intensity at every bin.
     """
     # Publish heading as PoseStamped.
-    posestamp = to_posestamped(heading)
-    heading_pub.publish(posestamp)
+    posestamp = to_posestamped(heading, frame)
+    heading_pub.publish(posestamp, frame)
 
     # Publish data as PointCloud.
     cloud = to_pointcloud(range, heading, bins)
@@ -124,7 +126,7 @@ if __name__ == "__main__":
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
 
-    # Get frame name.
+    # Get frame name and port.
     frame = rospy.get_param("~frame", "odom")
     port = rospy.get_param("~port", "/dev/sonar")
 
