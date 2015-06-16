@@ -21,12 +21,12 @@ from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 __author__ = "Anass Al-Wohoush"
 
 
-def to_config(frame, **config):
+def to_config(config, frame):
     """Converts a scan slice to a TritechMicronConfig message.
 
     Args:
+        config: Dictionary of sonar configuration.
         frame: Frame ID.
-        config: Sonar configuration.
 
     Returns:
         TritechMicronConfig.
@@ -141,7 +141,7 @@ def publish(sonar, range_scale, heading, bins, config):
     scan_pub.publish(cloud)
 
     # Publish data as TritechMicronConfig.
-    config = to_config(frame, **config)
+    config = to_config(config, frame)
     conf_pub.publish(config)
 
 

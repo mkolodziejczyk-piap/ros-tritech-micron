@@ -164,7 +164,7 @@ def parse(path, frame):
             scan_slice = Slice(row)
 
             # Publish configuration as TritechMicronConfig.
-            config = to_config(frame, **scan_slice.config)
+            config = to_config(scan_slice.config, frame)
             conf_pub.publish(config)
 
             # Publish heading as PoseStamped.
