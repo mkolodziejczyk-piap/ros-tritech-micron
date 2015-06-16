@@ -8,94 +8,16 @@ rviz, play with the 'Decay Time' parameter. This node also provides parameters
 that can be dynamically reconfigured.
 """
 
-import math
 import rospy
+from tritech_micron import tools
+from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
+from geometry_msgs.msg import PoseStamped
 from tritech_micron.cfg import ScanConfig
 from dynamic_reconfigure.server import Server
 from tritech_micron.msg import TritechMicronConfig
-from tf.transformations import quaternion_from_euler
-from sensor_msgs.msg import ChannelFloat32, PointCloud
-from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 
 __author__ = "Anass Al-Wohoush"
-
-
-def to_config(config, frame):
-    """Converts a scan slice to a TritechMicronConfig message.
-
-    Args:
-        config: Dictionary of sonar configuration.
-        frame: Frame ID.
-
-    Returns:
-        TritechMicronConfig.
-    """
-    config = TritechMicronConfig(**config)
-    config.header.frame_id = frame
-    config.header.stamp = rospy.get_rostime()
-    return config
-
-
-def to_pointcloud(range_scale, heading, bins, frame):
-    """Converts a scan slice to a PointCloud message.
-
-    Args:
-        range_scale: Range of scan.
-        heading: Slice heading in radians.
-        bins: Array of intensities of each return.
-        frame: Frame ID.
-
-    Returns:
-        A sensor_msgs.msg.PointCloud.
-    """
-    # Construct PointCloud message.
-    cloud = PointCloud()
-    cloud.header.frame_id = frame
-    cloud.header.stamp = rospy.get_rostime()
-
-    # Convert bins to list of Point32 messages.
-    nbins = len(bins)
-    r_step = range_scale / nbins
-    x_unit = math.cos(heading) * r_step
-    y_unit = math.sin(heading) * r_step
-    cloud.points = [
-        Point32(x=x_unit * r, y=y_unit * r, z=0.)
-        for r in range(1, nbins + 1)
-    ]
-
-    # Set intensity channel.
-    channel = ChannelFloat32()
-    channel.name = "intensity"
-    channel.values = bins
-    cloud.channels = [channel]
-
-    return cloud
-
-
-def to_posestamped(heading, frame):
-    """Converts a heading to a PoseStamped message.
-
-    Args:
-        heading: Slice heading in radians.
-        frame: Frame ID.
-
-    Returns:
-        A geometry_msgs.msg.PoseStamped.
-    """
-    # Construct PoseStamped message.
-    posestamp = PoseStamped()
-    posestamp.header.frame_id = frame
-    posestamp.header.stamp = rospy.get_rostime()
-
-    # Convert to quaternion.
-    q = Quaternion(*quaternion_from_euler(0, 0, heading))
-
-    # Make Pose message.
-    pose = Pose(orientation=q)
-    posestamp.pose = pose
-
-    return posestamp
 
 
 def reconfigure(config, level):
@@ -133,15 +55,15 @@ def publish(sonar, range_scale, heading, bins, config):
     """
 
     # Publish heading as PoseStamped.
-    posestamp = to_posestamped(heading, frame)
+    posestamp = tools.to_posestamped(heading, frame)
     heading_pub.publish(posestamp)
 
     # Publish data as PointCloud.
-    cloud = to_pointcloud(range_scale, heading, bins, frame)
+    cloud = tools.to_pointcloud(range_scale, heading, bins, frame)
     scan_pub.publish(cloud)
 
     # Publish data as TritechMicronConfig.
-    config = to_config(config, frame)
+    config = tools.to_config(config, frame)
     conf_pub.publish(config)
 
 

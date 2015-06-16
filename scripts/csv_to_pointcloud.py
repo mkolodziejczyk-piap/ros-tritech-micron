@@ -15,11 +15,10 @@ import sys
 import rospy
 import bitstring
 from datetime import datetime
+from tritech_micron import tools
 from sensor_msgs.msg import PointCloud
-from tritech_micron import TritechMicron
 from geometry_msgs.msg import PoseStamped
 from tritech_micron.msg import TritechMicronConfig
-from scan import to_config, to_pointcloud, to_posestamped
 
 __author__ = "Anass Al-Wohoush, Max Krogius"
 
@@ -54,10 +53,10 @@ class Slice(object):
         self.timestamp = datetime.strptime(row[1], "%H:%M:%S.%f")
 
         # Scan angles information.
-        self.left_limit = TritechMicron.to_radians(int(row[10]))
-        self.right_limit = TritechMicron.to_radians(int(row[11]))
-        self.step = TritechMicron.to_radians(int(row[12]))
-        self.heading = TritechMicron.to_radians(int(row[13]))
+        self.left_limit = tools.to_radians(int(row[10]))
+        self.right_limit = tools.to_radians(int(row[11]))
+        self.step = tools.to_radians(int(row[12]))
+        self.heading = tools.to_radians(int(row[13]))
         rospy.loginfo("Heading is now %f", self.heading)
 
         # Get the head status byte:
@@ -164,15 +163,15 @@ def parse(path, frame):
             scan_slice = Slice(row)
 
             # Publish configuration as TritechMicronConfig.
-            config = to_config(scan_slice.config, frame)
+            config = tools.to_config(scan_slice.config, frame)
             conf_pub.publish(config)
 
             # Publish heading as PoseStamped.
-            pose = to_posestamped(scan_slice.heading, frame)
+            pose = tools.to_posestamped(scan_slice.heading, frame)
             heading_pub.publish(pose)
 
             # Publish data as PointCloud.
-            cloud = to_pointcloud(
+            cloud = tools.to_pointcloud(
                 scan_slice.range, scan_slice.heading,
                 scan_slice.bins, frame
             )

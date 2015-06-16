@@ -2,7 +2,6 @@
 
 """Tritech Micron sonar."""
 
-import math
 import rospy
 import serial
 import datetime
@@ -10,6 +9,7 @@ import bitstring
 import exceptions
 from socket import Socket
 from messages import Message
+from tools import to_radians, to_sonar_angles
 
 __author__ = "Anass Al-Wohoush"
 
@@ -73,11 +73,11 @@ class TritechMicron(object):
         self.continuous = True
         self.gain = 0.40
         self.inverted = False
-        self.left_limit = TritechMicron.to_radians(0)
+        self.left_limit = to_radians(0)
         self.mo_time = 250
         self.nbins = 200
         self.range = 5.00
-        self.right_limit = TritechMicron.to_radians(6399)
+        self.right_limit = to_radians(6399)
         self.scanright = True
         self.speed = 1500.0
         self.step = Resolution.LOW
@@ -377,8 +377,8 @@ class TritechMicron(object):
         range_scale = bitstring.pack("uintle:16", int(self.range * 10))
 
         # Left/right angles limits are in 1/16th of a gradian.
-        _left_angle = TritechMicron.to_sonar_angles(self.left_limit)
-        _right_angle = TritechMicron.to_sonar_angles(self.right_limit)
+        _left_angle = to_sonar_angles(self.left_limit)
+        _right_angle = to_sonar_angles(self.right_limit)
         left_limit = bitstring.pack("uintle:16", _left_angle)
         right_limit = bitstring.pack("uintle:16", _right_angle)
 
@@ -408,7 +408,7 @@ class TritechMicron(object):
         #   16: medium resolution
         #   8:  high resolution
         #   4:  ultimate resolution
-        _step_size = TritechMicron.to_sonar_angles(self.step)
+        _step_size = to_sonar_angles(self.step)
         step = bitstring.pack("uint:8", _step_size)
 
         # ADInterval defines the sampling interval of each bin and is in units
@@ -468,52 +468,21 @@ class TritechMicron(object):
         # Send command.
         self.send(Message.SEND_DATA, payload)
 
-    def scan(self, callback):
-        """Sends scan command.
-
-        This method is blocking but calls callback at every reply with the
-        heading and a new dataset.
-
-        To stop a scan, simply call the preempt() method. Otherwise, the scan
-        will run forever.
-
-        The intensity at every bin is an integer value ranging between 0 and
-        255.
+    def __parse_head_data(self, data):
+        """Parses mtHeadData payload and returns parsed bins.
 
         Args:
-            callback: Callback for feedback.
-                Called with args=(sonar, range, heading, bins, config)
-                where range is in meters, heading is in radians, bins is an
-                integer array with the intensity at every bin and config is a
-                dictionary of the current scan configuration.
+            data: mtHeadData bitstring.
 
-        Raises:
-            SonarNotInitialized: Sonar is not initialized.
-            SonarNotConfigured: Sonar is not configured for scanning.
+        Returns:
+            Bins.
+
+        Raise:
+            ValueError: If data could not be parsed.
         """
-        # Verify sonar is ready to scan.
-        self.update()
-        if self.no_params or not self.has_cfg:
-            raise exceptions.SonarNotConfigured(self.no_params, self.has_cfg)
-
-        # Scan until stopped.
-        self.preempted = False
-        while not self.preempted:
-            # Preempt on ROS shutdown.
-            if rospy.is_shutdown():
-                self.preempt()
-                return
-
-            # Ping the sonar.
-            self._ping()
-
-            # Get the current heading data.
-            try:
-                data = self.get(Message.HEAD_DATA, wait=1).payload
-            except exceptions.TimeoutError:
-                # Try again.
-                continue
-
+        # Any number of exceptions could occur here if the packet is corrupted,
+        # so a catch-all approach is used for safety.
+        try:
             # Get the total number of bytes.
             count = data.read(16).uintle
             rospy.logdebug("Byte count is %d", count)
@@ -522,8 +491,10 @@ class TritechMicron(object):
             device_type = data.read(8)
             if device_type.uint != 0x11:
                 # Packet is likely corrupted, try again.
-                rospy.logerr("Unexpected device type: %s", device_type.hex)
-                continue
+                raise ValueError(
+                    "Unexpected device type: {}"
+                    .format(device_type.hex)
+                )
 
             # Get the head status byte:
             #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
@@ -621,7 +592,7 @@ class TritechMicron(object):
             rospy.logdebug("AD range is %f to %f", self.ad_low, self.ad_high)
 
             # Heading offset is ignored.
-            heading_offset = TritechMicron.to_radians(data.read(16).uint)
+            heading_offset = to_radians(data.read(16).uint)
             rospy.logdebug("Heading offset is %f", heading_offset)
 
             # ADInterval defines the sampling interval of each bin and is in
@@ -630,19 +601,19 @@ class TritechMicron(object):
             rospy.logdebug("AD interval is %d", ad_interval)
 
             # Left/right angles limits are in 1/16th of a gradian.
-            self.left_limit = TritechMicron.to_radians(data.read(16).uintle)
-            self.right_limit = TritechMicron.to_radians(data.read(16).uintle)
+            self.left_limit = to_radians(data.read(16).uintle)
+            self.right_limit = to_radians(data.read(16).uintle)
             rospy.logdebug(
                 "Limits are %f to %f",
                 self.left_limit, self.right_limit
             )
 
             # Step angle size.
-            self.step = TritechMicron.to_radians(data.read(8).uint)
+            self.step = to_radians(data.read(8).uint)
             rospy.logdebug("Step size is %f", self.step)
 
             # Heading is in units of 1/16th of a gradian.
-            self.heading = TritechMicron.to_radians(data.read(16).uintle)
+            self.heading = to_radians(data.read(16).uintle)
             rospy.loginfo("Heading is now %f", self.heading)
 
             # Dbytes is the number of bytes with data to follow.
@@ -654,6 +625,64 @@ class TritechMicron(object):
                 bins = [data.read(8).uint for i in range(dbytes)]
             else:
                 bins = [data.read(4).uint for i in range(dbytes * 2)]
+        except Exception as e:
+            # Damn.
+            raise ValueError(e)
+
+        return bins
+
+    def scan(self, callback):
+        """Sends scan command.
+
+        This method is blocking but calls callback at every reply with the
+        heading and a new dataset.
+
+        To stop a scan, simply call the preempt() method. Otherwise, the scan
+        will run forever.
+
+        The intensity at every bin is an integer value ranging between 0 and
+        255.
+
+        Args:
+            callback: Callback for feedback.
+                Called with args=(sonar, range, heading, bins, config)
+                where range is in meters, heading is in radians, bins is an
+                integer array with the intensity at every bin and config is a
+                dictionary of the current scan configuration.
+
+        Raises:
+            SonarNotInitialized: Sonar is not initialized.
+            SonarNotConfigured: Sonar is not configured for scanning.
+        """
+        # Verify sonar is ready to scan.
+        self.update()
+        if self.no_params or not self.has_cfg:
+            raise exceptions.SonarNotConfigured(self.no_params, self.has_cfg)
+
+        # Scan until stopped.
+        self.preempted = False
+        while not self.preempted:
+            # Preempt on ROS shutdown.
+            if rospy.is_shutdown():
+                self.preempt()
+                return
+
+            # Ping the sonar.
+            self._ping()
+
+            # Get the scan data.
+            try:
+                data = self.get(Message.HEAD_DATA, wait=1).payload
+            except exceptions.TimeoutError:
+                # Try again.
+                continue
+
+            try:
+                bins = self.__parse_head_data(data)
+            except ValueError as e:
+                # Try again.
+                rospy.logerr("Failed to parse head data: %r", e)
+                continue
 
             # Generate configuration.
             config = {
@@ -717,7 +746,7 @@ class TritechMicron(object):
         self.up_time = self.clock - self._time_offset
 
         # Get heading.
-        self.heading = TritechMicron.to_radians(payload.read(16).uintle)
+        self.heading = to_radians(payload.read(16).uintle)
 
         # Decode HeadInf byte.
         head_inf = payload.read(8)
@@ -740,30 +769,6 @@ class TritechMicron(object):
         rospy.logdebug("NO PARAMS:   %s", self.no_params)
         rospy.logdebug("HAS CFG:     %s", self.has_cfg)
 
-    @classmethod
-    def to_sonar_angles(cls, rad):
-        """Converts radians to units of 1/16th of a gradian.
-
-        Args:
-            rad: Angle in radians.
-
-        Returns:
-            Integral angle in units of 1/16th of a gradian.
-        """
-        return int(rad * 3200 / math.pi) % 6400
-
-    @classmethod
-    def to_radians(cls, angle):
-        """Converts units of 1/16th of a gradian to radians.
-
-        Args:
-            angle: Angle in units of 1/16th of a gradian.
-
-        Returns:
-            Angle in radians.
-        """
-        return angle / 3200.0 * math.pi
-
 
 class Resolution(object):
 
@@ -780,10 +785,10 @@ class Resolution(object):
     Other resolutions can also be used, but these are the ones documented by
     Tritech.
     """
-    FASTEST = TritechMicron.to_radians(255)  # Not recommended.
-    FASTER = TritechMicron.to_radians(128)  # Not recommended.
-    FAST = TritechMicron.to_radians(64)  # Not recommended.
-    LOW = TritechMicron.to_radians(32)
-    MEDIUM = TritechMicron.to_radians(16)
-    HIGH = TritechMicron.to_radians(8)
-    ULTIMATE = TritechMicron.to_radians(4)
+    FASTEST = to_radians(255)  # Not recommended.
+    FASTER = to_radians(128)  # Not recommended.
+    FAST = to_radians(64)  # Not recommended.
+    LOW = to_radians(32)
+    MEDIUM = to_radians(16)
+    HIGH = to_radians(8)
+    ULTIMATE = to_radians(4)
