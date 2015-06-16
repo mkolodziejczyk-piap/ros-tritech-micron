@@ -221,7 +221,7 @@ class TritechMicron(object):
                 continue
 
         # Timeout.
-        rospy.logerror("Timed out before receiving message: %s", expected_name)
+        rospy.logerr("Timed out before receiving message: %s", expected_name)
         raise exceptions.TimeoutError()
 
     def send(self, command, payload=None):
@@ -534,7 +534,7 @@ class TritechMicron(object):
             #   Bit 5:  RESERVED (ignore).
             #   Bit 6:  RESERVED (ignore).
             #   Bit 7:  Message appended after last packet data reply.
-            _head_status = data.read(8).bin
+            _head_status = data.read(8)
             rospy.logdebug("Head status byte is %s", _head_status)
             if _head_status[-1]:
                 rospy.logerr("Head power loss detected")

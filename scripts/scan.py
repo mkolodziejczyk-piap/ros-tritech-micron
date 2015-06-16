@@ -133,10 +133,10 @@ def publish(sonar, range_scale, heading, bins, config):
 
     # Publish heading as PoseStamped.
     posestamp = to_posestamped(heading, frame)
-    heading_pub.publish(posestamp, frame)
+    heading_pub.publish(posestamp)
 
     # Publish data as PointCloud.
-    cloud = to_pointcloud(range_scale, heading, bins)
+    cloud = to_pointcloud(range_scale, heading, bins, frame)
     scan_pub.publish(cloud)
 
     # Publish data as TritechMicronConfig.
