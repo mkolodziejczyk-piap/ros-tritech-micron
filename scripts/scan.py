@@ -108,7 +108,8 @@ def reconfigure(config, level):
     Returns:
         Configuration.
     """
-    rospy.loginfo("Reconfiguring sonar: %r, %r", config, level)
+    rospy.logwarn("Reconfiguring sonar")
+    rospy.logdebug("Configuration requested: %r, %r", config, level)
 
     # Remove additional keys.
     if "groups" in config:
