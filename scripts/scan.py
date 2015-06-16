@@ -10,15 +10,31 @@ that can be dynamically reconfigured.
 
 import math
 import rospy
-from std_msgs.msg import Float64
 from tritech_micron import TritechMicron
 from tritech_micron.cfg import ScanConfig
 from dynamic_reconfigure.server import Server
+from tritech_micron.msg import TritechMicronConfig
 from tf.transformations import quaternion_from_euler
 from sensor_msgs.msg import ChannelFloat32, PointCloud
 from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 
 __author__ = "Anass Al-Wohoush"
+
+
+def to_config(frame, **config):
+    """Converts a scan slice to a TritechMicronConfig message.
+
+    Args:
+        frame: Frame ID.
+        config: Sonar configuration.
+
+    Returns:
+        TritechMicronConfig.
+    """
+    config = TritechMicronConfig(**config)
+    config.header.frame_id = frame
+    config.header.stamp = rospy.get_rostime()
+    return config
 
 
 def to_pointcloud(range_scale, heading, bins, frame):
@@ -103,17 +119,17 @@ def reconfigure(config, level):
     return config
 
 
-def publish(sonar, range_scale, heading, bins):
-    """Publishes PointCloud and PoseStamped of current scan slice on callback.
+def publish(sonar, range_scale, heading, bins, config):
+    """Publishes PointCloud, PoseStamped and TritechMicronConfig of current
+    scan slice on callback.
 
     Args:
         sonar: Sonar instance.
         range_scale: Current scan range in meters.
         heading: Current heading in radians.
         bins: Integer array with the intensity at every bin.
+        config: Sonar configuration for current scan slice.
     """
-    # Publish range as Float64.
-    range_pub.publish(range_scale)
 
     # Publish heading as PoseStamped.
     posestamp = to_posestamped(heading, frame)
@@ -123,13 +139,17 @@ def publish(sonar, range_scale, heading, bins):
     cloud = to_pointcloud(range_scale, heading, bins)
     scan_pub.publish(cloud)
 
+    # Publish data as TritechMicronConfig.
+    config = to_config(frame, **config)
+    conf_pub.publish(config)
+
 
 if __name__ == "__main__":
     # Initialize node and publishers.
     rospy.init_node("tritech_micron")
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
-    range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
+    conf_pub = rospy.Publisher("~config", TritechMicronConfig, queue_size=800)
 
     # Get frame name and port.
     frame = rospy.get_param("~frame", "odom")

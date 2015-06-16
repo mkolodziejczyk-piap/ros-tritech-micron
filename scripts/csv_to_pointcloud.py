@@ -15,11 +15,11 @@ import sys
 import rospy
 import bitstring
 from datetime import datetime
-from std_msgs.msg import Float64
 from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
 from geometry_msgs.msg import PoseStamped
-from scan import to_pointcloud, to_posestamped
+from tritech_micron.msg import TritechMicronConfig
+from scan import to_config, to_pointcloud, to_posestamped
 
 __author__ = "Anass Al-Wohoush, Max Krogius"
 
@@ -117,6 +117,17 @@ class Slice(object):
         self.nbins = int(row[14])
         self.bins = map(int, row[15:])
 
+        # Generate configuration.
+        self.config = {
+            key: self.__getattribute__(key)
+            for key in (
+                "inverted", "continuous", "scanright",
+                "adc8on", "gain", "ad_low", "ad_high",
+                "left_limit", "right_limit",
+                "range", "nbins", "step"
+            )
+        }
+
     def __str__(self):
         """Returns string representation of Slice."""
         return str(self.heading)
@@ -135,8 +146,8 @@ def parse(path, frame):
     """
     # Create publishers.
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
-    range_pub = rospy.Publisher("~range", Float64, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
+    conf_pub = rospy.Publisher("~config", TritechMicronConfig, queue_size=800)
 
     with open(path) as data:
         # Read data and ignore header.
@@ -152,8 +163,9 @@ def parse(path, frame):
             # Parse row.
             scan_slice = Slice(row)
 
-            # Publish range as Float64.
-            range_pub.publish(scan_slice.range)
+            # Publish configuration as TritechMicronConfig.
+            config = to_config(frame, **scan_slice.config)
+            conf_pub.publish(config)
 
             # Publish heading as PoseStamped.
             pose = to_posestamped(scan_slice.heading, frame)

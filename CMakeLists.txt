@@ -12,9 +12,10 @@ find_package(catkin REQUIRED COMPONENTS
 
 catkin_python_setup()
 
-generate_dynamic_reconfigure_options(
-  cfg/Scan.cfg
-)
+generate_dynamic_reconfigure_options(cfg/Scan.cfg)
+
+add_message_files(FILES TritechMicronConfig.msg)
+generate_messages(DEPENDENCIES std_msgs)
 
 catkin_package(
   CATKIN_DEPENDS

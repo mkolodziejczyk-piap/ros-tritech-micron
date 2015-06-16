@@ -468,7 +468,7 @@ class TritechMicron(object):
         # Send command.
         self.send(Message.SEND_DATA, payload)
 
-    def scan(self, callback, **kwargs):
+    def scan(self, callback):
         """Sends scan command.
 
         This method is blocking but calls callback at every reply with the
@@ -482,10 +482,10 @@ class TritechMicron(object):
 
         Args:
             callback: Callback for feedback.
-                Called with args=(sonar, range, heading, bins)
-                where range is in meters, heading is in radians
-                and bins is an integer array with the intensity at every bin.
-            kwargs: Key-word arguments to pass to set() before scanning.
+                Called with args=(sonar, range, heading, bins, config)
+                where range is in meters, heading is in radians, bins is an
+                integer array with the intensity at every bin and config is a
+                dictionary of the current scan configuration.
 
         Raises:
             SonarNotInitialized: Sonar is not initialized.
@@ -495,10 +495,6 @@ class TritechMicron(object):
         self.update()
         if self.no_params or not self.has_cfg:
             raise exceptions.SonarNotConfigured(self.no_params, self.has_cfg)
-
-        # Update scan settings.
-        if kwargs:
-            self.set(**kwargs)
 
         # Scan until stopped.
         self.preempted = False
@@ -555,6 +551,10 @@ class TritechMicron(object):
             #   5: Scan at center position.
             sweep = data.read(8).uint
             rospy.logdebug("Sweep code is %d", sweep)
+            if sweep == 1:
+                rospy.loginfo("Reached left limit")
+            elif sweep == 2:
+                rospy.loginfo("Reached right limit")
 
             # Get the HdCtrl bytes to control operation:
             #   Bit 0:  adc8on          0: 4-bit        1: 8-bit
@@ -609,8 +609,8 @@ class TritechMicron(object):
             # If the ADC is set to 8-bit, MAX = 255 else MAX = 15.
             # ADLow = MAX * low / 80 where low is the desired minimum
             #   amplitude.
-            # ADSpan = MAX * range / 80 where range is the desired amplitude
-            #   range.
+            # ADSpan = MAX * span / 80 where span is the desired amplitude
+            #   span.
             # The full range is between ADLow and ADLow + ADSpan.
             MAX_SIZE = 255 if self.adc8on else 15
             ad_span = data.read(8).uintle
@@ -655,14 +655,19 @@ class TritechMicron(object):
             else:
                 bins = [data.read(4).uint for i in range(dbytes * 2)]
 
-            # Run callback.
-            callback(self, self.range, self.heading, bins)
+            # Generate configuration.
+            config = {
+                key: self.__getattribute__(key)
+                for key in (
+                    "inverted", "continuous", "scanright",
+                    "adc8on", "gain", "ad_low", "ad_high",
+                    "left_limit", "right_limit",
+                    "range", "nbins", "step"
+                )
+            }
 
-            # Proceed or not.
-            if not self.scanright and sweep == 1:
-                rospy.loginfo("Reached left limit")
-            elif self.scanright and sweep == 2:
-                rospy.loginfo("Reached right limit")
+            # Run callback.
+            callback(self, self.range, self.heading, bins, config)
 
     def preempt(self):
         """Preempts a scan in progress."""
