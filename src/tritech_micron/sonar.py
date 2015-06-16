@@ -9,7 +9,7 @@ import bitstring
 import exceptions
 from socket import Socket
 from messages import Message
-from tools import to_radians, to_sonar_angles
+from tools import ScanSlice, to_radians, to_sonar_angles
 
 __author__ = "Anass Al-Wohoush"
 
@@ -618,13 +618,16 @@ class TritechMicron(object):
 
             # Dbytes is the number of bytes with data to follow.
             dbytes = data.read(16).uintle
+            if self.adc8on:
+                self.nbins = dbytes
+                bin_size = 8
+            else:
+                self.nbins = dbytes * 2
+                bin_size = 4
             rospy.logdebug("DBytes is %d", dbytes)
 
             # Get bins.
-            if self.adc8on:
-                bins = [data.read(8).uint for i in range(dbytes)]
-            else:
-                bins = [data.read(4).uint for i in range(dbytes * 2)]
+            bins = [data.read(bin_size).uint for i in range(self.nbins)]
         except Exception as e:
             # Damn.
             raise ValueError(e)
@@ -645,10 +648,9 @@ class TritechMicron(object):
 
         Args:
             callback: Callback for feedback.
-                Called with args=(sonar, range, heading, bins, config)
-                where range is in meters, heading is in radians, bins is an
-                integer array with the intensity at every bin and config is a
-                dictionary of the current scan configuration.
+                Called with args=(sonar, slice)
+                where sonar is this sonar instance and slice is a SonarSlice
+                instance.
 
         Raises:
             SonarNotInitialized: Sonar is not initialized.
@@ -696,7 +698,8 @@ class TritechMicron(object):
             }
 
             # Run callback.
-            callback(self, self.range, self.heading, bins, config)
+            slice = ScanSlice(self.heading, bins, config)
+            callback(self, slice)
 
     def preempt(self):
         """Preempts a scan in progress."""

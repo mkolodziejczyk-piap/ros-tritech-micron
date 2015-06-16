@@ -36,98 +36,120 @@ def to_radians(angle):
     return angle / 3200.0 * math.pi
 
 
-def to_config(config, frame):
-    """Converts a scan slice to a TritechMicronConfig message.
-
-    Args:
-        config: Dictionary of sonar configuration.
-        frame: Frame ID.
-
-    Returns:
-        TritechMicronConfig.
-    """
-    config = TritechMicronConfig(**config)
-    config.header.frame_id = frame
-    config.header.stamp = rospy.get_rostime()
-    return config
-
-
-def to_pointcloud(range_scale, heading, bins, frame):
-    """Converts a scan slice to a PointCloud message.
-
-    Args:
-        range_scale: Range of scan.
-        heading: Slice heading in radians.
-        bins: Array of intensities of each return.
-        frame: Frame ID.
-
-    Returns:
-        A sensor_msgs.msg.PointCloud.
-    """
-    # Construct PointCloud message.
-    cloud = PointCloud()
-    cloud.header.frame_id = frame
-    cloud.header.stamp = rospy.get_rostime()
-
-    # Convert bins to list of Point32 messages.
-    nbins = len(bins)
-    r_step = range_scale / nbins
-    x_unit = math.cos(heading) * r_step
-    y_unit = math.sin(heading) * r_step
-    cloud.points = [
-        Point32(x=x_unit * r, y=y_unit * r, z=0.)
-        for r in range(1, nbins + 1)
-    ]
-
-    # Set intensity channel.
-    channel = ChannelFloat32()
-    channel.name = "intensity"
-    channel.values = bins
-    cloud.channels = [channel]
-
-    return cloud
-
-
-def to_posestamped(heading, frame):
-    """Converts a heading to a PoseStamped message.
-
-    Args:
-        heading: Slice heading in radians.
-        frame: Frame ID.
-
-    Returns:
-        A geometry_msgs.msg.PoseStamped.
-    """
-    # Construct PoseStamped message.
-    posestamp = PoseStamped()
-    posestamp.header.frame_id = frame
-    posestamp.header.stamp = rospy.get_rostime()
-
-    # Convert to quaternion.
-    q = Quaternion(*quaternion_from_euler(0, 0, heading))
-
-    # Make Pose message.
-    pose = Pose(orientation=q)
-    posestamp.pose = pose
-
-    return posestamp
-
-
-def reconfigured(previous_config, current_config):
+def reconfigured(previous_slice, current_slice):
     """Determines whether the sonar has been reconfigured to the point that all
     upcoming data is incompatible with previous data and cannot be stitched
     together to form an image.
 
     Args:
-        previous_config:
-        current_config:
+        previous_slice: Previous slice.
+        current_slice: Current slice.
 
     Returns:
         True if scan data should be reset due to reconfiguration, False
         otherwise.
     """
-    for key in current_config:
-        if current_config[key] != previous_config[key]:
+    for key in current_slice.config:
+        if current_slice.config[key] != previous_slice.config[key]:
             return True
 
     return False
+
+
+class ScanSlice(object):
+
+    """Scan slice.
+
+    Attributes:
+        bins: Array of intensities of each return.
+        config: Sonar configuration at time of this slice.
+        heading: Heading of sonar in radians.
+        range: Range of scan in meters.
+        timestamp: ROS timestamp.
+    """
+
+    def __init__(self, heading, bins, config):
+        """Constructs ScanSlice instance.
+
+        Args:
+            heading: Heading of sonar in radians.
+            bins: Array of intensities of each return.
+            config: Sonar configuration at time of this slice.
+        """
+        self.heading = heading
+        self.bins = bins
+        self.config = config
+        self.range = config["range"]
+        self.timestamp = rospy.get_rostime()
+
+    def to_config(self, frame):
+        """Returns a TritechMicronConfig message corresponding to slice
+        configuration.
+
+        Args:
+            frame: Frame ID.
+
+        Returns:
+            TritechMicronConfig.
+        """
+        config = TritechMicronConfig(**self.config)
+        config.header.frame_id = frame
+        config.header.stamp = self.timestamp
+
+        return config
+
+    def to_pointcloud(self, frame):
+        """Returns a PointCloud message corresponding to slice.
+
+        Args:
+            frame: Frame ID.
+
+        Returns:
+            A sensor_msgs.msg.PointCloud.
+        """
+
+        # Construct PointCloud message.
+        cloud = PointCloud()
+        cloud.header.frame_id = frame
+        cloud.header.stamp = self.timestamp
+
+        # Convert bins to list of Point32 messages.
+        nbins = self.config["nbins"]
+        r_step = self.range / nbins
+        x_unit = math.cos(self.heading) * r_step
+        y_unit = math.sin(self.heading) * r_step
+        cloud.points = [
+            Point32(x=x_unit * r, y=y_unit * r, z=0.00)
+            for r in range(1, nbins + 1)
+        ]
+
+        # Set intensity channel.
+        channel = ChannelFloat32()
+        channel.name = "intensity"
+        channel.values = self.bins
+        cloud.channels = [channel]
+
+        return cloud
+
+    def to_posestamped(self, frame):
+        """Returns a PoseStamped message corresponding to slice heading.
+
+        Args:
+            frame: Frame ID.
+
+        Returns:
+            A geometry_msgs.msg.PoseStamped.
+        """
+        # Construct PoseStamped message.
+        posestamp = PoseStamped()
+        posestamp.header.frame_id = frame
+        posestamp.header.stamp = self.timestamp
+
+        # Convert to quaternion.
+        q = Quaternion(*quaternion_from_euler(0, 0, self.heading))
+
+        # Make Pose message.
+        pose = Pose(orientation=q)
+        posestamp.pose = pose
+
+        return posestamp

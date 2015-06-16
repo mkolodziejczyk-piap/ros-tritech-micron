@@ -9,7 +9,6 @@ that can be dynamically reconfigured.
 """
 
 import rospy
-from tritech_micron import tools
 from sensor_msgs.msg import PointCloud
 from tritech_micron import TritechMicron
 from geometry_msgs.msg import PoseStamped
@@ -42,28 +41,25 @@ def reconfigure(config, level):
     return config
 
 
-def publish(sonar, range_scale, heading, bins, config):
+def publish(sonar, slice):
     """Publishes PointCloud, PoseStamped and TritechMicronConfig of current
     scan slice on callback.
 
     Args:
         sonar: Sonar instance.
-        range_scale: Current scan range in meters.
-        heading: Current heading in radians.
-        bins: Integer array with the intensity at every bin.
-        config: Sonar configuration for current scan slice.
+        slice: Current scan slice.
     """
 
     # Publish heading as PoseStamped.
-    posestamp = tools.to_posestamped(heading, frame)
+    posestamp = slice.to_posestamped(frame)
     heading_pub.publish(posestamp)
 
     # Publish data as PointCloud.
-    cloud = tools.to_pointcloud(range_scale, heading, bins, frame)
+    cloud = slice.to_pointcloud(frame)
     scan_pub.publish(cloud)
 
     # Publish data as TritechMicronConfig.
-    config = tools.to_config(config, frame)
+    config = slice.to_config(frame)
     conf_pub.publish(config)
 
 
