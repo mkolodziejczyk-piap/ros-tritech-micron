@@ -111,3 +111,23 @@ def to_posestamped(heading, frame):
     posestamp.pose = pose
 
     return posestamp
+
+
+def reconfigured(previous_config, current_config):
+    """Determines whether the sonar has been reconfigured to the point that all
+    upcoming data is incompatible with previous data and cannot be stitched
+    together to form an image.
+
+    Args:
+        previous_config:
+        current_config:
+
+    Returns:
+        True if scan data should be reset due to reconfiguration, False
+        otherwise.
+    """
+    for key in current_config:
+        if current_config[key] != previous_config[key]:
+            return True
+
+    return False
