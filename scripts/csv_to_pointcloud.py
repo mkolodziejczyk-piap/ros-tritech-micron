@@ -10,6 +10,7 @@ Note: This does not currently support decoding Tritech's V4LOG file format, so
 you must first convert them to CSV using Tritech's Windows utility.
 """
 
+import os
 import csv
 import sys
 import rospy
@@ -196,6 +197,9 @@ if __name__ == "__main__":
     if path is None:
         rospy.logfatal("Please specify a file as _csv:=path/to/file.")
         sys.exit(-1)
+
+    # Expand user directory to allow specifying files from relative to ~.
+    path = os.path.expanduser(path)
 
     try:
         parse(path, frame)
