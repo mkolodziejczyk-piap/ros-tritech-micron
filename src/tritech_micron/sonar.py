@@ -788,9 +788,9 @@ class Resolution(object):
     Other resolutions can also be used, but these are the ones documented by
     Tritech.
     """
-    FASTEST = to_radians(255)  # Not recommended.
-    FASTER = to_radians(128)  # Not recommended.
-    FAST = to_radians(64)  # Not recommended.
+    LOWEST = to_radians(255)  # Not recommended.
+    LOWER = to_radians(128)  # Not recommended.
+    LOWERISH = to_radians(64)  # Not recommended.
     LOW = to_radians(32)
     MEDIUM = to_radians(16)
     HIGH = to_radians(8)
