@@ -51,8 +51,8 @@ def publish(sonar, slice):
     """
 
     # Publish heading as PoseStamped.
-    posestamp = slice.to_posestamped(frame)
-    heading_pub.publish(posestamp)
+    posestamped = slice.to_posestamped(frame)
+    heading_pub.publish(posestamped)
 
     # Publish data as PointCloud.
     cloud = slice.to_pointcloud(frame)

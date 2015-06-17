@@ -154,8 +154,8 @@ def parse(path, frame):
             conf_pub.publish(config)
 
             # Publish heading as PoseStamped.
-            pose = slice.to_posestamped(frame)
-            heading_pub.publish(pose)
+            posestamped = slice.to_posestamped(frame)
+            heading_pub.publish(posestamped)
 
             # Publish data as PointCloud.
             cloud = slice.to_pointcloud(frame)

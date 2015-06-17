@@ -141,15 +141,15 @@ class ScanSlice(object):
             A geometry_msgs.msg.PoseStamped.
         """
         # Construct PoseStamped message.
-        posestamp = PoseStamped()
-        posestamp.header.frame_id = frame
-        posestamp.header.stamp = self.timestamp
+        posestamped = PoseStamped()
+        posestamped.header.frame_id = frame
+        posestamped.header.stamp = self.timestamp
 
         # Convert to quaternion.
         q = Quaternion(*quaternion_from_euler(0, 0, self.heading))
 
         # Make Pose message.
         pose = Pose(orientation=q)
-        posestamp.pose = pose
+        posestamped.pose = pose
 
-        return posestamp
+        return posestamped
