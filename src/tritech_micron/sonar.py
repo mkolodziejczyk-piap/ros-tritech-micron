@@ -661,6 +661,11 @@ class TritechMicron(object):
         if self.no_params or not self.has_cfg:
             raise exceptions.SonarNotConfigured(self.no_params, self.has_cfg)
 
+        # Timeout count to keep track of how many failures in a row occured.
+        # This will then try to recover by resetting the sonar parameters.
+        timeout_count = 0
+        MAX_TIMEOUT_COUNT = 5
+
         # Scan until stopped.
         self.preempted = False
         while not self.preempted:
@@ -675,7 +680,14 @@ class TritechMicron(object):
             # Get the scan data.
             try:
                 data = self.get(Message.HEAD_DATA, wait=1).payload
+                timeout_count = 0
             except exceptions.TimeoutError:
+                timeout_count += 1
+                rospy.logdebug("Timeout count: %d", timeout_count)
+                if timeout_count >= MAX_TIMEOUT_COUNT:
+                    # Try to resend parameters.
+                    self.set(force=True)
+                    timeout_count = 0
                 # Try again.
                 continue
 
