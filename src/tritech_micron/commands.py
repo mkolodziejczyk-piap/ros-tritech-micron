@@ -22,7 +22,7 @@ class Command(object):
         self.payload = payload if payload else bitstring.BitStream()
         self.size = (self.payload.length / 8) + 8
 
-    def to_string(self):
+    def serialize(self):
         """Constructs corresponding string of bytes to send to sonar.
 
         Returns:

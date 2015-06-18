@@ -49,9 +49,9 @@ class Socket(object):
         rospy.loginfo("Sending %s: %s", Message.to_string(message), payload)
         rospy.logdebug(
             "Sending %s",
-            "".join(["{:02X}".format(ord(x)) for x in cmd.to_string()])
+            "".join(["{:02X}".format(ord(x)) for x in cmd.serialize()])
         )
-        self.conn.write(cmd.to_string())
+        self.conn.write(cmd.serialize())
 
     def get_reply(self):
         """Waits for and returns Reply.
