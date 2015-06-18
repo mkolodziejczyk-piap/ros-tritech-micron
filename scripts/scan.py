@@ -29,7 +29,7 @@ def reconfigure(config, level):
     Returns:
         Configuration.
     """
-    rospy.logwarn("Reconfiguring sonar")
+    rospy.loginfo("Reconfiguring sonar")
     rospy.logdebug("Configuration requested: %r, %r", config, level)
 
     # Remove additional keys.

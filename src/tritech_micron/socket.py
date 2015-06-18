@@ -47,11 +47,7 @@ class Socket(object):
             payload: Additional payload to send in packet.
         """
         cmd = Command(message, payload)
-        rospy.loginfo("Sending %s: %s", Message.to_string(message), payload)
-        rospy.logdebug(
-            "Sending %s",
-            "".join(["{:02X}".format(ord(x)) for x in cmd.serialize()])
-        )
+        rospy.logdebug("Sending %s: %s", Message.to_string(message), payload)
         self.conn.write(cmd.serialize())
 
     def get_reply(self):
