@@ -28,8 +28,7 @@ class Command(object):
         Returns:
             String representation of data.
         """
-        ascii_size = map(lambda x: hex(ord(x)), "{:04X}".format(self.size))
-        hex_size = bitstring.pack(", ".join(ascii_size))
+        hex_size = bytearray("{:04X}".format(self.size))
         values = {
             "id": self.id,
             "hex": hex_size,
@@ -39,9 +38,9 @@ class Command(object):
             "payload": self.payload
         }
 
-        format = (
+        serial_format = (
             "0x40, bits:32=hex, uintle:16=bin, 0xFF, 0x02, uint:8=bytes_left,"
             "uint:8=id, 0x80, 0x02, bits:payload_length=payload, 0x0A"
         )
-        message = bitstring.pack(format, **values)
+        message = bitstring.pack(serial_format, **values)
         return message.tobytes()
