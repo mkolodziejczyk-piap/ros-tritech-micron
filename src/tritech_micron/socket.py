@@ -2,6 +2,7 @@
 
 """Tritech Micron serial communication handler."""
 
+import errno
 import rospy
 import serial
 import select
@@ -86,10 +87,10 @@ class Socket(object):
 
             rospy.logdebug("Received %s: %s", reply.name, reply.payload)
             return reply
-        except select.error as e:
+        except select.error as (code, msg):
             # Set SIGINT as KeyboardInterrupt correctly, because pyserial has
             # problems.
-            if e[1] == "Interrupted system call":
+            if code == errno.EINTR:
                 raise KeyboardInterrupt()
 
             # Otherwise, reraise.
