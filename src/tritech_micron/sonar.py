@@ -306,12 +306,12 @@ class TritechMicron(object):
 
         # Return if unnecessary.
         if not necessary:
-            rospy.loginfo("Parameters are already set")
+            rospy.logwarn("Parameters are already set")
             return
 
         # Return if only switching the motor's direction is necessary.
         if only_reverse:
-            rospy.loginfo("Only reversing direction")
+            rospy.logwarn("Only reversing direction")
             self.scanright = not self.scanright
             return self.reverse()
 
