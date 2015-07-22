@@ -65,7 +65,7 @@ def publish(sonar, slice):
 
 if __name__ == "__main__":
     # Initialize node and publishers.
-    rospy.init_node("tritech_micron", log_level=rospy.DEBUG)
+    rospy.init_node("tritech_micron")
     scan_pub = rospy.Publisher("~scan", PointCloud, queue_size=800)
     heading_pub = rospy.Publisher("~heading", PoseStamped, queue_size=800)
     conf_pub = rospy.Publisher("~config", TritechMicronConfig, queue_size=800)
