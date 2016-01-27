@@ -71,8 +71,8 @@ if __name__ == "__main__":
     conf_pub = rospy.Publisher("~config", TritechMicronConfig, queue_size=800)
 
     # Get frame name and port.
-    frame = rospy.get_param("~frame", "robot")
-    port = rospy.get_param("~port", "/dev/sonar")
+    frame = rospy.get_param("~frame")
+    port = rospy.get_param("~port")
 
     with TritechMicron(port=port) as sonar:
         try:
