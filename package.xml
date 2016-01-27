@@ -6,7 +6,7 @@
     This package provides ROS actions to control and communicate with the
     Tritech Micron sonar.
   </description>
-  <maintainer email="mr@anassinator.com">anassinator</maintainer>
+  <maintainer email="mr@anassinator.com">Anass Al</maintainer>
   <license>GPLv2</license>
 
   <buildtool_depend>catkin</buildtool_depend>
