@@ -39,7 +39,7 @@ To run, simply connect the Tritech Micron sonar over RS232 and launch the
 package with:
 
 ```bash
-roslaunch launch/tritech_micron.launch port:=</path/to/sonar> frame:=<frame_id>
+roslaunch tritech_micron tritech_micron.launch port:=</path/to/sonar> frame:=<frame_id>
 ```
 
 `port` and `frame` are run-time ROS launch arguments:
