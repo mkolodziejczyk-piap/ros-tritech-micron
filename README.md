@@ -18,7 +18,8 @@ Dependencies
 Before proceeding, make sure to install all the dependencies by running:
 
 ```bash
-sudo pip install -r requirements.txt
+rosdep update
+rosdep install tritech_micron
 ```
 
 Compiling
