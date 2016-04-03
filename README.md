@@ -1,11 +1,9 @@
-Tritech Micron ROS Package
-==========================
+# Tritech Micron ROS Package
 
 This ROS package configures and communicates with the Tritech Micron sonar.
 **This has only been tested on ROS Indigo and Jade over RS232.**
 
-Setting up
-----------
+## Setting up
 
 You must clone this repository as `tritech_micron` into your catkin workspace:
 
@@ -13,8 +11,8 @@ You must clone this repository as `tritech_micron` into your catkin workspace:
 git clone https://github.com/mcgill-robotics/ros-tritech-micron.git tritech_micron
 ```
 
-Dependencies
-------------
+## Dependencies
+
 Before proceeding, make sure to install all the dependencies by running:
 
 ```bash
@@ -22,8 +20,7 @@ rosdep update
 rosdep install tritech_micron
 ```
 
-Compiling
----------
+## Compiling
 
 You **must** compile this package before being able to run it. You can do so
 by running:
@@ -34,8 +31,8 @@ catkin_make
 
 from the root of your workspace.
 
-Running
--------
+## Running
+
 To run, simply connect the Tritech Micron sonar over RS232 and launch the
 package with:
 
@@ -44,18 +41,20 @@ roslaunch tritech_micron tritech_micron.launch port:=</path/to/sonar> frame:=<fr
 ```
 
 `port` and `frame` are run-time ROS launch arguments:
-- `port`: Serial port to read from, default: `/dev/sonar`.
-- `frame`: `tf` frame to stamp the messages with, default: `robot`.
+
+-   `port`: Serial port to read from, default: `/dev/sonar`.
+-   `frame`: `tf` frame to stamp the messages with, default: `sonar`.
 
 The package will keep trying to connect to the sonar until it is successful.
 
 The `tritech_micron` node will output to the following ROS topics:
-- `~scan`: `PointCloud` message. Scan data of the current heading only.
-- `~heading`: `PoseStamped` message. Current heading of the sonar.
-- `~config`: `TritechMicronConfig` message. Sonar config published on change.
 
-Configuring
------------
+-   `~scan`: `PointCloud` message. Scan data of the current heading only.
+-   `~heading`: `PoseStamped` message. Current heading of the sonar.
+-   `~config`: `TritechMicronConfig` message. Sonar config published on change.
+
+## Configuring
+
 To configure the Tritech Micron sonar, take a look at the parameters defined
 in [Scan.cfg](cfg/Scan.cfg).
 
@@ -66,8 +65,8 @@ as such:
 rosrun rqt_reconfigure rqt_reconfigure
 ```
 
-Visualizing
------------
+## Visualizing
+
 The scan data can be conveniently visualized with `rviz`.
 Simply, add the `tritech_micron/scan` topic as a `PointCloud` message to the
 view and make sure to set the `Decay Time` parameter to the number of seconds
