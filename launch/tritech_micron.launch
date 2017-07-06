@@ -7,7 +7,8 @@
         pkg="tritech_micron"
         type="scan.py"
         output="screen"
-        respawn="true">
+        respawn="true"
+        respawn_delay="5">
     <!-- Set ROS parameters -->
     <param name="port" value="$(arg port)"/>
     <param name="frame" value="$(arg frame)"/>
