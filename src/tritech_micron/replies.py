@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Tritech Micron replies."""
 
 from messages import Message
@@ -46,8 +45,7 @@ class Reply(object):
     def __str__(self):
         """Returns string representation of reply."""
         return "<msg: {s.id}, {s.size} bytes, '0x{s.bitstream.hex}'>".format(
-            s=self
-        )
+            s=self)
 
     def parse(self):
         """Parses packet into header, message ID, sequence and payload.
@@ -82,15 +80,11 @@ class Reply(object):
             # by comparing packet's real size to self.size.
             real_size = (self.bitstream.len / 8) - 6  # 6 bytes
             if real_size < self.size:
-                raise PacketIncomplete(
-                    "Packet is undersize: {} / {}"
-                    .format(real_size, self.size)
-                )
+                raise PacketIncomplete("Packet is undersize: {} / {}".format(
+                    real_size, self.size))
             elif real_size > self.size:
-                raise PacketCorrupted(
-                    "Packet is oversize: {} / {}"
-                    .format(real_size, self.size)
-                )
+                raise PacketCorrupted("Packet is oversize: {} / {}".format(
+                    real_size, self.size))
 
             # Check if Bin Length equals Hex Length.
             # Note we read num as little-endian unsigned int.
@@ -98,9 +92,8 @@ class Reply(object):
             bin_ln = self.bitstream.read("uintle:16")
             if bin_ln != self.size:
                 raise PacketCorrupted(
-                    "Binary and hex size mismatch: bin: {}, hex: {}"
-                    .format(bin_ln, self.size)
-                )
+                    "Binary and hex size mismatch: bin: {}, hex: {}".format(
+                        bin_ln, self.size))
 
             # Parse Packet Source Identification Node.
             self.bitstream.bytepos = 7
@@ -112,8 +105,7 @@ class Reply(object):
             if dest_id != 255:
                 raise PacketCorrupted(
                     "Invalid Packet Destination Identification Node: {}"
-                    .format(dest_id)
-                )
+                    .format(dest_id))
 
             # Parse message ID and verify it's between 0-72.
             self.bitstream.bytepos = 10
@@ -134,9 +126,8 @@ class Reply(object):
                 # Byte count differs from self.size by 5 bytes.
                 if byte_count != self.size - 5:
                     raise PacketCorrupted(
-                        "Bytes left mismatch: recv: {}, exp: {}, id: {}"
-                        .format(byte_count, self.size - 5, self.id)
-                    )
+                        "Bytes left mismatch: recv: {}, exp: {}, id: {}".format(
+                            byte_count, self.size - 5, self.id))
 
             # Parse message sequence bitset.
             self.bitstream.bytepos = 11
@@ -153,9 +144,8 @@ class Reply(object):
             tx_node = self.bitstream.read("uint:8")
             if tx_node != source_id:
                 raise PacketCorrupted(
-                    "Node number mismatch: TX: {}, Source ID: {}"
-                    .format(tx_node, source_id)
-                )
+                    "Node number mismatch: TX: {}, Source ID: {}".format(
+                        tx_node, source_id))
 
             # Parse message payload (byte 14 to end, excluding LF).
             self.bitstream.bytepos = 13

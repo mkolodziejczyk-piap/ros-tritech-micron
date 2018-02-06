@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Tritech Micron commands."""
 
 import bitstring
@@ -40,7 +39,6 @@ class Command(object):
 
         serial_format = (
             "0x40, bits:32=hex, uintle:16=bin, 0xFF, 0x02, uint:8=bytes_left,"
-            "uint:8=id, 0x80, 0x02, bits:payload_length=payload, 0x0A"
-        )
+            "uint:8=id, 0x80, 0x02, bits:payload_length=payload, 0x0A")
         message = bitstring.pack(serial_format, **values)
         return message.tobytes()

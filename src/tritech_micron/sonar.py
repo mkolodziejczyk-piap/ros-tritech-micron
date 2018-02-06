@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Tritech Micron sonar."""
 
 import rospy
@@ -152,8 +151,7 @@ class TritechMicron(object):
         while not self.has_cfg or self.no_params:
             rospy.loginfo(
                 "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
-                self.has_cfg, self.no_params
-            )
+                self.has_cfg, self.no_params)
             self.update()
 
         rospy.loginfo("Sonar is ready for use")
@@ -212,10 +210,7 @@ class TritechMicron(object):
                     rospy.logdebug("Found %s message", expected_name)
                     return reply
                 elif reply.id != Message.ALIVE:
-                    rospy.logwarn(
-                        "Received unexpected %s message",
-                        reply.name
-                    )
+                    rospy.logwarn("Received unexpected %s message", reply.name)
             except exceptions.PacketCorrupted, serial.SerialException:
                 # Keep trying.
                 continue
@@ -238,10 +233,22 @@ class TritechMicron(object):
 
         self.conn.send(command, payload)
 
-    def set(self, adc8on=None, continuous=None, scanright=None, step=None,
-            ad_low=None, ad_high=None, left_limit=None, right_limit=None,
-            mo_time=None, range=None, nbins=None, gain=None, speed=None,
-            inverted=None, force=False):
+    def set(self,
+            adc8on=None,
+            continuous=None,
+            scanright=None,
+            step=None,
+            ad_low=None,
+            ad_high=None,
+            left_limit=None,
+            right_limit=None,
+            mo_time=None,
+            range=None,
+            nbins=None,
+            gain=None,
+            speed=None,
+            inverted=None,
+            force=False):
         """Sends Sonar head command with new properties if needed.
 
         Only the parameters specified will be modified.
@@ -273,11 +280,21 @@ class TritechMicron(object):
             raise exceptions.SonarNotInitialized()
 
         self.__set_parameters(
-            adc8on=adc8on, continuous=continuous, scanright=scanright,
-            step=step, ad_low=ad_low, ad_high=ad_high, left_limit=left_limit,
-            right_limit=right_limit, mo_time=mo_time, range=range, nbins=nbins,
-            gain=gain, speed=speed, inverted=inverted, force=force
-        )
+            adc8on=adc8on,
+            continuous=continuous,
+            scanright=scanright,
+            step=step,
+            ad_low=ad_low,
+            ad_high=ad_high,
+            left_limit=left_limit,
+            right_limit=right_limit,
+            mo_time=mo_time,
+            range=range,
+            nbins=nbins,
+            gain=gain,
+            speed=speed,
+            inverted=inverted,
+            force=force)
 
     def __set_parameters(self, force, **kwargs):
         """Sends Sonar head command to set sonar properties.
@@ -352,10 +369,9 @@ class TritechMicron(object):
         #   Bit 13: ReplyASL        0: N/A          1: default
         #   Bit 14: ReplyThr        0: default      1: N/A
         #   Bit 15: IgnoreSensor    0: default      1: emergencies
-        hd_ctrl = bitstring.pack(
-            "0b001000110000, bool, bool, bool, bool",
-            self.inverted, self.scanright, self.continuous, self.adc8on
-        )
+        hd_ctrl = bitstring.pack("0b001000110000, bool, bool, bool, bool",
+                                 self.inverted, self.scanright, self.continuous,
+                                 self.adc8on)
         hd_ctrl.byteswap()  # Little endian please.
 
         # Set the sonar type: 0x11 for DST.
@@ -431,11 +447,10 @@ class TritechMicron(object):
         scanz = bitstring.pack("uint:8, uint:8", 0, 0)
 
         # Order and construct bitstream.
-        bitstream = (
-            v3b, hd_ctrl, hd_type, tx_rx, range_scale, left_limit, right_limit,
-            ad_span, ad_low, gain, slope, mo_time, step, ad_interval, nbins,
-            max_ad_buf, lockout, minor_axis, major_axis, ctl2, scanz
-        )
+        bitstream = (v3b, hd_ctrl, hd_type, tx_rx, range_scale, left_limit,
+                     right_limit, ad_span, ad_low, gain, slope, mo_time, step,
+                     ad_interval, nbins, max_ad_buf, lockout, minor_axis,
+                     major_axis, ctl2, scanz)
         payload = bitstring.BitStream()
         for chunk in bitstream:
             payload.append(chunk)
@@ -454,13 +469,12 @@ class TritechMicron(object):
         # Get current time in milliseconds.
         now = datetime.datetime.now()
         current_time = datetime.timedelta(
-            hours=now.hour, minutes=now.minute,
-            seconds=now.second, microseconds=0
-        )
-        payload = bitstring.pack(
-            "uintle:32",
-            current_time.total_seconds() * 1000
-        )
+            hours=now.hour,
+            minutes=now.minute,
+            seconds=now.second,
+            microseconds=0)
+        payload = bitstring.pack("uintle:32",
+                                 current_time.total_seconds() * 1000)
 
         # Reset offset for up time.
         self._time_offset = current_time - self.up_time
@@ -491,10 +505,8 @@ class TritechMicron(object):
             device_type = data.read(8)
             if device_type.uint != 0x11:
                 # Packet is likely corrupted, try again.
-                raise ValueError(
-                    "Unexpected device type: {}"
-                    .format(device_type.hex)
-                )
+                raise ValueError("Unexpected device type: {}".format(
+                    device_type.hex))
 
             # Get the head status byte:
             #   Bit 0:  'HdPwrLoss'. Head is in Reset Condition.
@@ -548,8 +560,7 @@ class TritechMicron(object):
             hd_ctrl = data.read(16)
             hd_ctrl.byteswap()  # Little endian please.
             self.inverted, self.scanright, self.continuous, self.adc8on = (
-                hd_ctrl.unpack("pad:12, bool, bool, bool, bool")
-            )
+                hd_ctrl.unpack("pad:12, bool, bool, bool, bool"))
             rospy.logdebug("Head control bytes are %s", hd_ctrl.bin)
             rospy.logdebug("ADC8 mode %s", self.adc8on)
             rospy.logdebug("Continuous mode %s", self.continuous)
@@ -603,10 +614,8 @@ class TritechMicron(object):
             # Left/right angles limits are in 1/16th of a gradian.
             self.left_limit = to_radians(data.read(16).uintle)
             self.right_limit = to_radians(data.read(16).uintle)
-            rospy.logdebug(
-                "Limits are %f to %f",
-                self.left_limit, self.right_limit
-            )
+            rospy.logdebug("Limits are %f to %f", self.left_limit,
+                           self.right_limit)
 
             # Step angle size.
             self.step = to_radians(data.read(8).uint)
@@ -701,12 +710,9 @@ class TritechMicron(object):
             # Generate configuration.
             config = {
                 key: self.__getattribute__(key)
-                for key in (
-                    "inverted", "continuous", "scanright",
-                    "adc8on", "gain", "ad_low", "ad_high",
-                    "left_limit", "right_limit",
-                    "range", "nbins", "step"
-                )
+                for key in ("inverted", "continuous", "scanright", "adc8on",
+                            "gain", "ad_low", "ad_high", "left_limit",
+                            "right_limit", "range", "nbins", "step")
             }
 
             # Run callback.

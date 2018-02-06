@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Tritech Micron sonar tools."""
 
 import math

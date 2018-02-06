@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 """Tritech Micron messages."""
 
 __author__ = "Erin Havens, Anass Al-Wohoush"

@@ -3,8 +3,7 @@
   <name>tritech_micron</name>
   <version>1.0.0</version>
   <description>
-    This package provides ROS actions to control and communicate with the
-    Tritech Micron sonar.
+    Controls and communicates with the Tritech Micron sonar.
   </description>
 
   <maintainer email="mr@anassinator.com">Anass Al-Wohoush</maintainer>

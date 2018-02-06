@@ -2,13 +2,13 @@ cmake_minimum_required(VERSION 2.8.3)
 project(tritech_micron)
 
 find_package(catkin REQUIRED COMPONENTS
-  rospy
-  genmsg
-  message_generation
-  std_msgs
-  sensor_msgs
-  geometry_msgs
   dynamic_reconfigure
+  genmsg
+  geometry_msgs
+  message_generation
+  rospy
+  sensor_msgs
+  std_msgs
 )
 
 catkin_python_setup()
@@ -21,9 +21,9 @@ generate_messages(DEPENDENCIES std_msgs)
 catkin_package(
   CATKIN_DEPENDS
   geometry_msgs
-  sensor_msgs
   message_runtime
   rospy
+  sensor_msgs
   std_msgs
 )
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 """Tritech Micron CSV to PointCloud.
 
 This script converts a CSV logged by the Tritech Windows utility to ROS
@@ -80,8 +79,7 @@ def parse_row(row):
     hd_ctrl = bitstring.pack("uintle:16", int(row[4]))
     hd_ctrl.byteswap()  # Little endian please.
     inverted, scanright, continuous, adc8on = (
-        hd_ctrl.unpack("pad:12, bool, bool, bool, bool")
-    )
+        hd_ctrl.unpack("pad:12, bool, bool, bool, bool"))
     rospy.logdebug("Head control bytes are %s", hd_ctrl.bin)
     rospy.logdebug("ADC8 mode %s", adc8on)
     rospy.logdebug("Continuous mode %s", continuous)

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 """Tritech Micron sonar scanner.
 
 This publishes one PointCloud message per scan slice. In order to visualize in
