@@ -1,5 +1,9 @@
 # Tritech Micron ROS Package
 
+[status]: https://dev.mcgillrobotics.com/buildStatus/icon?job=ros-tritech-micron/master
+[url]: https://dev.mcgillrobotics.com/job/ros-tritech-micron/job/master
+[![status]][url]
+
 This ROS package configures and communicates with the Tritech Micron sonar.
 **This has only been tested on ROS Indigo, Jade, and Kinetic over RS232.**
 
