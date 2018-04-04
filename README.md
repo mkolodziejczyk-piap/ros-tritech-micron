@@ -1,13 +1,16 @@
 # Tritech Micron ROS Package
 
 This ROS package configures and communicates with the Tritech Micron sonar.
-**This has only been tested on ROS Indigo and Jade over RS232.**
+**This has only been tested on ROS Indigo, Jade, and Kinetic over RS232.**
 
 ## Setting up
 
-You must clone this repository as `tritech_micron` into your catkin workspace:
+You must clone this repository as `tritech_micron` into your `catkin`
+workspace's `src` directory:
 
 ```bash
+roscd
+cd src
 git clone https://github.com/mcgill-robotics/ros-tritech-micron.git tritech_micron
 ```
 
