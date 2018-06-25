@@ -58,11 +58,12 @@ class TritechMicron(object):
         step: Mechanical resolution (Resolution enumeration).
     """
 
-    def __init__(self, port="/dev/sonar", **kwargs):
+    def __init__(self, port="/dev/sonar", baudrate=115200, **kwargs):
         """Constructs Sonar object.
 
         Args:
             port: Serial port (default: /dev/sonar).
+            baudrate: Serial baudrate (default: 115200).
             kwargs: Key-word arguments to pass to set() on initialization.
         """
         # Parameter defaults.
@@ -92,6 +93,7 @@ class TritechMicron(object):
 
         # Connection properties.
         self.port = port
+        self.baudrate = baudrate
         self.conn = None
         self.initialized = False
 
@@ -132,7 +134,7 @@ class TritechMicron(object):
         """
         if not self.conn:
             try:
-                self.conn = Socket(self.port)
+                self.conn = Socket(self.port, self.baudrate)
             except OSError as e:
                 raise exceptions.SonarNotFound(self.port, e)
 

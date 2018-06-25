@@ -1,7 +1,7 @@
 <launch>
-  <!-- Read arguments -->
-  <arg name="port" default="/dev/sonar"/>
-  <arg name="frame" default="sonar"/>
+  <arg name="port" default="/dev/sonar" doc="serial port"/>
+  <arg name="baudrate" default="115200" doc="serial baud rate"/>
+  <arg name="frame" default="sonar" doc="frame ID"/>
 
   <node name="tritech_micron"
         pkg="tritech_micron"
@@ -10,7 +10,8 @@
         respawn="true"
         respawn_delay="5">
     <!-- Set ROS parameters -->
-    <param name="port" value="$(arg port)"/>
-    <param name="frame" value="$(arg frame)"/>
+    <param name="port" value="$(arg port)" type="str"/>
+    <param name="baudrate" value="$(arg baudrate)" type="int"/>
+    <param name="frame" value="$(arg frame)" type="str"/>
   </node>
 </launch>

@@ -44,21 +44,22 @@ To run, simply connect the Tritech Micron sonar over RS232 and launch the
 package with:
 
 ```bash
-roslaunch tritech_micron tritech_micron.launch port:=</path/to/sonar> frame:=<frame_id>
+roslaunch tritech_micron tritech_micron.launch port:=</path/to/sonar>
 ```
 
-`port` and `frame` are run-time ROS launch arguments:
+The following run-time ROS launch arguments are available:
 
--   `port`: Serial port to read from, default: `/dev/sonar`.
--   `frame`: `tf` frame to stamp the messages with, default: `sonar`.
+- `port`: Serial port to read from, default: `/dev/sonar`.
+- `baudrate`: Serial port baudrate, default: `115200`.
+- `frame`: `tf` frame to stamp the messages with, default: `sonar`.
 
 The package will keep trying to connect to the sonar until it is successful.
 
 The `tritech_micron` node will output to the following ROS topics:
 
--   `~scan`: `PointCloud` message. Scan data of the current heading only.
--   `~heading`: `PoseStamped` message. Current heading of the sonar.
--   `~config`: `TritechMicronConfig` message. Sonar config published on change.
+- `~scan`: `PointCloud` message. Scan data of the current heading only.
+- `~heading`: `PoseStamped` message. Current heading of the sonar.
+- `~config`: `TritechMicronConfig` message. Sonar config published on change.
 
 ## Configuring
 
@@ -82,3 +83,33 @@ only one slice.
 
 If done properly, you should be able to see something like this:
 ![Tritech Micron scan data](https://cloud.githubusercontent.com/assets/723610/10464518/1f73efda-71b8-11e5-8654-8dc300471692.png)
+
+## Contributing
+
+Contributions are welcome. Simply open an issue or pull request on the matter,
+and it will be accepted as long as it does not complicate the code base too
+much.
+
+As for style guides, we follow the ROS Python Style Guide for ROS-specifics and
+the Google Python Style Guide for everything else.
+
+### Linting
+
+We use [YAPF](https://github.com/google/yapf) for all Python formatting needs.
+You can auto-format your changes with the following command:
+
+```bash
+yapf --recursive --in-place --parallel .
+```
+
+We also use [catkin_lint](https://github.com/fkie/catkin_lint) for all `catkin`
+specifics. You can lint your changes as follows:
+
+```bash
+catkin lint --explain -W2 .
+```
+
+## License
+
+See [LICENSE](LICENSE).
+

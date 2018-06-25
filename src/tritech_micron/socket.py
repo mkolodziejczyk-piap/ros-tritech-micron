@@ -22,13 +22,14 @@ class Socket(object):
         conn: Serial connection.
     """
 
-    def __init__(self, port):
+    def __init__(self, port, baudrate):
         """Constructs Socket object.
 
         Args:
             port: Serial port.
+            baudrate: Serial baudrate.
         """
-        self.conn = serial.Serial(port=port, baudrate=115200)
+        self.conn = serial.Serial(port=port, baudrate=baudrate)
 
     def open(self):
         """Opens serial connection."""

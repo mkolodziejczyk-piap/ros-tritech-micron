@@ -72,8 +72,9 @@ if __name__ == "__main__":
     # Get frame name and port.
     frame = rospy.get_param("~frame")
     port = rospy.get_param("~port")
+    baudrate = rospy.get_param("~baudrate")
 
-    with TritechMicron(port=port) as sonar:
+    with TritechMicron(port, baudrate) as sonar:
         try:
             # Initialize dynamic reconfigure server and scan.
             Server(ScanConfig, reconfigure)

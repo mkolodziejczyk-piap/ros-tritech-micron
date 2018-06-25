@@ -1,7 +1,7 @@
 pipeline {
   agent any
   environment {
-    PACKAGE_NAME = 'tritech-micron'
+    PACKAGE_NAME = 'tritech_micron'
     ROS_WORKSPACE = "${WORKSPACE}_ws"
   }
   stages {
