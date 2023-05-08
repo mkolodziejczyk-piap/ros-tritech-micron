@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Tritech Micron replies."""
 
-from messages import Message
+from tritech_micron.messages import Message
 from bitstring import ReadError
-from exceptions import PacketIncomplete, PacketCorrupted
+from tritech_micron.exceptions import PacketIncomplete, PacketCorrupted
 
 __author__ = "Erin Havens, Jey Kumar, Anass Al-Wohoush"
 

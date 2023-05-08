@@ -5,10 +5,11 @@ import rospy
 import serial
 import datetime
 import bitstring
-import exceptions
-from socket import Socket
-from messages import Message
-from tools import ScanSlice, to_radians, to_sonar_angles
+import tritech_micron.exceptions as exceptions
+# import builtins as exceptions
+from tritech_micron.socket import Socket
+from tritech_micron.messages import Message
+from tritech_micron.tools import ScanSlice, to_radians, to_sonar_angles
 
 __author__ = "Anass Al-Wohoush"
 
@@ -82,7 +83,7 @@ class TritechMicron(object):
         self.step = Resolution.LOW
 
         # Override defaults with key-word arguments or ROS parameters.
-        for key, value in self.__dict__.iteritems():
+        for key, value in self.__dict__.items():
             if key in kwargs:
                 self.__setattr__(key, value)
             else:
@@ -141,12 +142,16 @@ class TritechMicron(object):
         self.initialized = True
 
         # Reboot to make sure the sonar is clean.
+        # rospy.loginfo("send")
         self.send(Message.REBOOT)
+        # rospy.loginfo("update")
         self.update()
 
+        # rospy.loginfo("set")
         # Set default properties.
         self.set(force=True)
 
+        # rospy.loginfo("while")
         # Wait for settings to go through.
         while not self.has_cfg or self.no_params:
             rospy.loginfo(
@@ -195,7 +200,12 @@ class TritechMicron(object):
         # wait forever.
         while message is None or datetime.datetime.now() < end:
             try:
+                # rospy.loginfo("reply")
                 reply = self.conn.get_reply()
+
+                # rospy.loginfo(reply)
+
+                # print(f"reply.id: {reply.id}")
 
                 # Update state if mtAlive.
                 if reply.id == Message.ALIVE:
@@ -211,7 +221,7 @@ class TritechMicron(object):
                     return reply
                 elif reply.id != Message.ALIVE:
                     rospy.logwarn("Received unexpected %s message", reply.name)
-            except exceptions.PacketCorrupted, serial.SerialException:
+            except (exceptions.PacketCorrupted, serial.SerialException):
                 # Keep trying.
                 continue
 
@@ -313,7 +323,7 @@ class TritechMicron(object):
         # Set and compare sonar properties.
         necessary = not self.has_cfg or self.no_params or force
         only_reverse = not necessary
-        for key, value in kwargs.iteritems():
+        for key, value in kwargs.items():
             if value is not None:
                 if hasattr(self, key) and self.__getattribute__(key) != value:
                     self.__setattr__(key, value)
@@ -781,15 +791,22 @@ class TritechMicron(object):
         self.has_cfg = head_inf[7]
 
         rospy.loginfo("UP TIME:     %s", self.up_time)
-        rospy.logdebug("RECENTERING: %s", self.recentering)
-        rospy.logdebug("CENTRED:     %s", self.centred)
-        rospy.logdebug("MOTORING:    %s", self.motoring)
-        rospy.logdebug("MOTOR ON:    %s", self.motor_on)
-        rospy.logdebug("CLOCKWISE:   %s", self.scanright)
-        rospy.logdebug("SCANNING:    %s", self.scanning)
-        rospy.logdebug("NO PARAMS:   %s", self.no_params)
-        rospy.logdebug("HAS CFG:     %s", self.has_cfg)
-
+        # rospy.logdebug("RECENTERING: %s", self.recentering)
+        # rospy.logdebug("CENTRED:     %s", self.centred)
+        # rospy.logdebug("MOTORING:    %s", self.motoring)
+        # rospy.logdebug("MOTOR ON:    %s", self.motor_on)
+        # rospy.logdebug("CLOCKWISE:   %s", self.scanright)
+        # rospy.logdebug("SCANNING:    %s", self.scanning)
+        # rospy.logdebug("NO PARAMS:   %s", self.no_params)
+        # rospy.logdebug("HAS CFG:     %s", self.has_cfg)
+        rospy.loginfo("RECENTERING: %s", self.recentering)
+        rospy.loginfo("CENTRED:     %s", self.centred)
+        rospy.loginfo("MOTORING:    %s", self.motoring)
+        rospy.loginfo("MOTOR ON:    %s", self.motor_on)
+        rospy.loginfo("CLOCKWISE:   %s", self.scanright)
+        rospy.loginfo("SCANNING:    %s", self.scanning)
+        rospy.loginfo("NO PARAMS:   %s", self.no_params)
+        rospy.loginfo("HAS CFG:     %s", self.has_cfg)
 
 class Resolution(object):
 

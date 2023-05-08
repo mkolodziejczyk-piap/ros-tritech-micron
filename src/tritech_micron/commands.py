@@ -19,7 +19,10 @@ class Command(object):
         """
         self.id = id
         self.payload = payload if payload else bitstring.BitStream()
-        self.size = (self.payload.length / 8) + 8
+        self.size = int(self.payload.length / 8) + 8
+
+        # print(f"self.payload:{self.payload}")
+        # print(f"self.size:{self.size}")
 
     def serialize(self):
         """Constructs corresponding string of bytes to send to sonar.
@@ -27,7 +30,12 @@ class Command(object):
         Returns:
             String representation of data.
         """
-        hex_size = bytearray("{:04X}".format(self.size))
+
+        hex_size = bytearray("{:04X}".format(self.size).encode())
+        # hex_size = bytearray.fromhex("{:04X}".format(self.size))
+        # hex_size = "0x0000" + "{:04X}".format(self.size)
+        # hex_size = bitstring.BitArray(32)
+        # hex_size.int = self.size
         values = {
             "id": self.id,
             "hex": hex_size,
@@ -41,4 +49,9 @@ class Command(object):
             "0x40, bits:32=hex, uintle:16=bin, 0xFF, 0x02, uint:8=bytes_left,"
             "uint:8=id, 0x80, 0x02, bits:payload_length=payload, 0x0A")
         message = bitstring.pack(serial_format, **values)
+        # print(f"message: {message}")
+        # print(f"message.tobytes(): {message.tobytes()}")
         return message.tobytes()
+
+        # bitstring.CreationError: Token with length 32 packed with value of length 16 (bits:32=bytearray(b'\x00\x08')).
+

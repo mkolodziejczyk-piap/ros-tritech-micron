@@ -2,10 +2,12 @@
 """Tritech Micron sonar tools."""
 
 import math
+import numpy as np
 import rospy
 from tritech_micron.msg import TritechMicronConfig
 from tf.transformations import quaternion_from_euler
 from sensor_msgs.msg import ChannelFloat32, PointCloud
+from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
 
 __author__ = "Anass Al-Wohoush"
@@ -129,6 +131,76 @@ class ScanSlice(object):
         cloud.channels = [channel]
 
         return cloud
+    
+    # def to_pointcloud(self, frame):
+    #     """Returns a PointCloud message corresponding to slice.
+
+    #     Args:
+    #         frame: Frame ID.
+
+    #     Returns:
+    #         A sensor_msgs.msg.PointCloud.
+    #     """
+
+    #     # Construct PointCloud message.
+    #     # cloud = PointCloud()
+    #     # cloud.header.frame_id = frame
+    #     # cloud.header.stamp = self.timestamp
+
+    #     # # Convert bins to list of Point32 messages.
+    #     # nbins = self.config["nbins"]
+    #     # r_step = self.range / nbins
+    #     # x_unit = math.cos(self.heading) * r_step
+    #     # y_unit = math.sin(self.heading) * r_step
+    #     # cloud.points = [
+    #     #     Point32(x=x_unit * r, y=y_unit * r, z=0.00)
+    #     #     for r in range(1, nbins + 1)
+    #     # ]
+
+    #     # # Set intensity channel.
+    #     # channel = ChannelFloat32()
+    #     # channel.name = "intensity"
+    #     # channel.values = self.bins
+    #     # cloud.channels = [channel]
+
+    #     # Construct PointCloud message.
+    #     header = Header()
+    #     header.frame_id = frame
+    #     header.stamp = self.timestamp
+
+    #     fields = [
+    #         PointField('x', 0, PointField.FLOAT32, 1),
+    #         PointField('y', 4, PointField.FLOAT32, 1),
+    #         PointField('z', 8, PointField.FLOAT32, 1),
+    #         PointField('intensity', 12, PointField.FLOAT32, 1),
+    #     ]
+
+    #     point_step = 16
+
+    #     # Convert bins to list of Point32 messages.
+    #     nbins = self.config["nbins"]
+    #     r_step = self.range / nbins
+    #     x_unit = np.cos(self.heading) * r_step
+    #     y_unit = np.sin(self.heading) * r_step
+    #     r = np.arange(1, nbins + 1)
+    #     points = np.vstack([
+    #         x_unit * r,
+    #         y_unit * r,
+    #         0.00,
+    #         self.bins
+    #     ]).flatten()
+
+    #     cloud = PointCloud2(header=header,
+    #                 height=1,
+    #                 width=nbins,
+    #                 is_dense=False, # True
+    #                 is_bigendian=False,
+    #                 fields=self.fields,
+    #                 point_step=self.point_step,
+    #                 row_step=self.point_step * nbins,
+    #                 data=points.tostring())
+
+    #     return cloud
 
     def to_posestamped(self, frame):
         """Returns a PoseStamped message corresponding to slice heading.
@@ -145,7 +217,7 @@ class ScanSlice(object):
         posestamped.header.stamp = self.timestamp
 
         # Convert to quaternion.
-        q = Quaternion(*quaternion_from_euler(0, 0, self.heading))
+        q = Quaternion(*quaternion_from_euler(0, 0, self.heading-math.pi))
 
         # Make Pose message.
         pose = Pose(orientation=q)
