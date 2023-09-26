@@ -1,7 +1,7 @@
 # Tritech Micron configuration parameters.
 
 # Header message.
-Header header
+std_msgs/Header header
 
 # Whether the sonar head is facing upwards.
 bool inverted
