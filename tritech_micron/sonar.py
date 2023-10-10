@@ -77,11 +77,13 @@ class TritechMicron(Node):
 
         super().__init__('sonar')
 
+        
+
         # Parameter defaults.
         self.ad_high = 80.0
         self.ad_low = 0.00
         self.adc8on = True
-        self.continuous = True
+        self.continuous = False
         self.gain = 0.50
         self.inverted = False
         self.left_limit = to_radians(2400)
@@ -123,25 +125,27 @@ class TritechMicron(Node):
         self._time_offset = datetime.timedelta(0)
         self.preempted = False
 
-        self.scan_pub = self.create_publisher(PointCloud2, "~scan", queue_size=800)
-        self.heading_pub = self.create_publisher(PoseStamped, "~heading", queue_size=800)
-        self.conf_pub = self.create_publisher(TritechMicronConfig, "~config", queue_size=800)
+        self.scan_pub = self.create_publisher(PointCloud2, "scan", 10)
+        self.heading_pub = self.create_publisher(PoseStamped, "heading", 10)
+        self.conf_pub = self.create_publisher(TritechMicronConfig, "config", 10)
 
-        self.add_on_set_parameters_callback(self.parameters_callback)
+        # self.add_on_set_parameters_callback(self.parameters_callback)
 
         # Get frame name and port.
         self.declare_parameter('frame', rclpy.Parameter.Type.STRING)
-        self.declare_parameter('port', rclpy.Parameter.Type.INTEGER)
-        self.frame = self.get_parameter('frame')
-        self.port = self.get_parameter('port')
+        self.declare_parameter('port', rclpy.Parameter.Type.STRING)
+        self.frame = self.get_parameter('frame').value
+        self.port = self.get_parameter('port').value
 
-    def parameters_callback(self, params):
-        # do some actions, validate parameters, update class attributes, etc.
-        config = dict()
-        for param in params:
-            config[param.name] = param.value
-        self.set(**config)
-        return SetParametersResult(successful=True)
+        self.open()
+
+    # def parameters_callback(self, params):
+    #     # do some actions, validate parameters, update class attributes, etc.
+    #     config = dict()
+    #     # for param in params:
+    #     #     config[param.name] = param.value
+    #     self.set(**config)
+    #     return SetParametersResult(successful=True)
 
     def publish(self, slice):
         """Publishes PointCloud, PoseStamped and TritechMicronConfig of current
@@ -164,18 +168,18 @@ class TritechMicron(Node):
         config = slice.to_config(self.frame)
         self.conf_pub.publish(config)
 
-    def __enter__(self):
-        """Initializes sonar for first use.
+    # def __enter__(self):
+    #     """Initializes sonar for first use.
 
-        Raises:
-            SonarNotFound: Sonar port could not be opened.
-        """
-        self.open()
-        return self
+    #     Raises:
+    #         SonarNotFound: Sonar port could not be opened.
+    #     """
+    #     self.open()
+    #     return self
 
-    def __exit__(self, type, value, traceback):
-        """Cleans up."""
-        self.close()
+    # def __exit__(self, type, value, traceback):
+    #     """Cleans up."""
+    #     self.close()
 
     def open(self):
         """Initializes sonar connection and sets default properties.
@@ -190,7 +194,7 @@ class TritechMicron(Node):
                 raise exceptions.SonarNotFound(self.port, e)
 
         # Update properties.
-        self.get_logger().info("Initializing sonar on %s", self.port)
+        self.get_logger().info("Initializing sonar on %s" % self.port)
         self.initialized = True
 
         # Reboot to make sure the sonar is clean.
@@ -207,8 +211,8 @@ class TritechMicron(Node):
         # Wait for settings to go through.
         while not self.has_cfg or self.no_params:
             self.get_logger().info(
-                "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)",
-                self.has_cfg, self.no_params)
+                "Waiting for configuration: (HAS CFG: %s, NO PARAMS: %s)" %
+                (self.has_cfg, self.no_params))
             self.update()
 
         self.get_logger().info("Sonar is ready for use")
@@ -243,7 +247,7 @@ class TritechMicron(Node):
         expected_name = None
         if message:
             expected_name = Message.to_string(message)
-            self.get_logger().debug("Waiting for %s message", expected_name)
+            self.get_logger().debug("Waiting for %s message" % expected_name)
 
         # Determine end time.
         end = datetime.datetime.now() + datetime.timedelta(seconds=wait)
@@ -269,16 +273,16 @@ class TritechMicron(Node):
 
                 # Otherwise, verify reply ID.
                 if reply.id == message:
-                    self.get_logger().debug("Found %s message", expected_name)
+                    self.get_logger().debug("Found %s message" % expected_name)
                     return reply
                 elif reply.id != Message.ALIVE:
-                    self.get_logger().warn("Received unexpected %s message", reply.name)
+                    self.get_logger().warn("Received unexpected %s message" % reply.name)
             except (exceptions.PacketCorrupted, serial.SerialException):
                 # Keep trying.
                 continue
 
         # Timeout.
-        self.get_logger().err("Timed out before receiving message: %s", expected_name)
+        self.get_logger().error("Timed out before receiving message: %s" % expected_name)
         raise exceptions.TimeoutError()
 
     def send(self, command, payload=None):
@@ -341,7 +345,7 @@ class TritechMicron(Node):
         if not self.initialized:
             raise exceptions.SonarNotInitialized()
 
-        self.__set_parameters(
+        self.__set_params(
             adc8on=adc8on,
             continuous=continuous,
             scanright=scanright,
@@ -358,7 +362,7 @@ class TritechMicron(Node):
             inverted=inverted,
             force=force)
 
-    def __set_parameters(self, force, **kwargs):
+    def __set_params(self, force, **kwargs):
         """Sends Sonar head command to set sonar properties.
 
         Only the parameters specified will be modified.
@@ -395,20 +399,20 @@ class TritechMicron(Node):
             return self.reverse()
 
         # Log properties.
-        self.get_logger().info("CONTINUOUS:  %s", self.continuous)
-        self.get_logger().info("LEFT LIMIT:  %s rad", self.left_limit)
-        self.get_logger().info("RIGHT LIMIT: %s rad", self.right_limit)
-        self.get_logger().info("STEP SIZE:   %s rad", self.step)
-        self.get_logger().info("N BINS:      %s", self.nbins)
-        self.get_logger().info("RANGE:       %s m", self.range)
-        self.get_logger().info("INVERTED:    %s", self.inverted)
-        self.get_logger().info("AD HIGH:     %s dB", self.ad_high)
-        self.get_logger().info("AD LOW:      %s dB", self.ad_low)
-        self.get_logger().info("ADC 8 ON:    %s", self.adc8on)
-        self.get_logger().info("GAIN:        %s%%", self.gain * 100)
-        self.get_logger().info("MOTOR TIME:  %s us", self.mo_time)
-        self.get_logger().info("CLOCKWISE:   %s", self.scanright)
-        self.get_logger().info("SPEED:       %s m/s", self.speed)
+        self.get_logger().info("CONTINUOUS:  %s" % self.continuous)
+        self.get_logger().info("LEFT LIMIT:  %s rad" % self.left_limit)
+        self.get_logger().info("RIGHT LIMIT: %s rad" % self.right_limit)
+        self.get_logger().info("STEP SIZE:   %s rad" % self.step)
+        self.get_logger().info("N BINS:      %s" % self.nbins)
+        self.get_logger().info("RANGE:       %s m" % self.range)
+        self.get_logger().info("INVERTED:    %s" % self.inverted)
+        self.get_logger().info("AD HIGH:     %s dB" % self.ad_high)
+        self.get_logger().info("AD LOW:      %s dB" % self.ad_low)
+        self.get_logger().info("ADC 8 ON:    %s" % self.adc8on)
+        self.get_logger().info("GAIN:        %s%%" % self.gain * 100)
+        self.get_logger().info("MOTOR TIME:  %s us" % self.mo_time)
+        self.get_logger().info("CLOCKWISE:   %s" % self.scanright)
+        self.get_logger().info("SPEED:       %s m/s" % self.speed)
 
         # This device is not Dual Channel so skip the “V3B” Gain Parameter
         # block: 0x01 for normal, 0x1D for extended V3B Gain Parameters.
@@ -561,7 +565,7 @@ class TritechMicron(Node):
         try:
             # Get the total number of bytes.
             count = data.read(16).uintle
-            self.get_logger().debug("Byte count is %d", count)
+            self.get_logger().debug("Byte count is %d" % count)
 
             # The device type should be 0x11 for a DST Sonar.
             device_type = data.read(8)
@@ -580,11 +584,11 @@ class TritechMicron(Node):
             #   Bit 6:  RESERVED (ignore).
             #   Bit 7:  Message appended after last packet data reply.
             _head_status = data.read(8)
-            self.get_logger().debug("Head status byte is %s", _head_status)
+            self.get_logger().debug("Head status byte is %s" % _head_status)
             if _head_status[-1]:
-                self.get_logger().err("Head power loss detected")
+                self.get_logger().error("Head power loss detected")
             if _head_status[-2]:
-                self.get_logger().err("Motor lost sync")
+                self.get_logger().error("Motor lost sync")
                 self.set(force=True)
 
             # Get the sweep code. Its value should correspond to:
@@ -595,7 +599,7 @@ class TritechMicron(Node):
             #   4: RESERVED (ignore)
             #   5: Scan at center position.
             sweep = data.read(8).uint
-            self.get_logger().debug("Sweep code is %d", sweep)
+            self.get_logger().debug("Sweep code is %d" % sweep)
             if sweep == 1:
                 self.get_logger().info("Reached left limit")
             elif sweep == 2:
@@ -623,10 +627,10 @@ class TritechMicron(Node):
             hd_ctrl.byteswap()  # Little endian please.
             self.inverted, self.scanright, self.continuous, self.adc8on = (
                 hd_ctrl.unpack("pad:12, bool, bool, bool, bool"))
-            self.get_logger().debug("Head control bytes are %s", hd_ctrl.bin)
-            self.get_logger().debug("ADC8 mode %s", self.adc8on)
-            self.get_logger().debug("Continuous mode %s", self.continuous)
-            self.get_logger().debug("Scanning right %s", self.scanright)
+            self.get_logger().debug("Head control bytes are %s" % hd_ctrl.bin)
+            self.get_logger().debug("ADC8 mode %s" % self.adc8on)
+            self.get_logger().debug("Continuous mode %s" % self.continuous)
+            self.get_logger().debug("Scanning right %s" % self.scanright)
 
             # Range scale.
             # The lower 14 bits are the range scale * 10 units and the higher 2
@@ -638,14 +642,14 @@ class TritechMicron(Node):
             # Only the metric system is implemented for now, because it is
             # better.
             self.range = data.read(16).uintle / 10.0
-            self.get_logger().debug("Range scale is %f", self.range)
+            self.get_logger().debug("Range scale is %f" % self.range)
 
             # TX/RX transmitter constants: N/A to DST.
             data.read(32)
 
             # The gain ranges from 0 to 210.
             self.gain = data.read(8).uintle / 210.0
-            self.get_logger().debug("Gain is %f", self.gain)
+            self.get_logger().debug("Gain is %f" % self.gain)
 
             # Slope setting is N/A to DST.
             data.read(16)
@@ -662,30 +666,30 @@ class TritechMicron(Node):
             self.ad_low = ad_low * 80.0 / MAX_SIZE
             span_intensity = ad_span * 80.0 / MAX_SIZE
             self.ad_high = self.ad_low + span_intensity
-            self.get_logger().debug("AD range is %f to %f", self.ad_low, self.ad_high)
+            self.get_logger().debug("AD range is %f to %f" % (self.ad_low, self.ad_high))
 
             # Heading offset is ignored.
             heading_offset = to_radians(data.read(16).uint)
-            self.get_logger().debug("Heading offset is %f", heading_offset)
+            self.get_logger().debug("Heading offset is %f" % heading_offset)
 
             # ADInterval defines the sampling interval of each bin and is in
             # units of 640 nanoseconds.
             ad_interval = data.read(16).uintle
-            self.get_logger().debug("AD interval is %d", ad_interval)
+            self.get_logger().debug("AD interval is %d" % ad_interval)
 
             # Left/right angles limits are in 1/16th of a gradian.
             self.left_limit = to_radians(data.read(16).uintle)
             self.right_limit = to_radians(data.read(16).uintle)
-            self.get_logger().debug("Limits are %f to %f", self.left_limit,
-                           self.right_limit)
+            self.get_logger().debug("Limits are %f to %f" % (self.left_limit,
+                           self.right_limit))
 
             # Step angle size.
             self.step = to_radians(data.read(8).uint)
-            self.get_logger().debug("Step size is %f", self.step)
+            self.get_logger().debug("Step size is %f" % self.step)
 
             # Heading is in units of 1/16th of a gradian.
             self.heading = to_radians(data.read(16).uintle)
-            self.get_logger().info("Heading is now %f", self.heading)
+            # self.get_logger().info("Heading is now %f" % self.heading)
 
             # Dbytes is the number of bytes with data to follow.
             dbytes = data.read(16).uintle
@@ -695,7 +699,7 @@ class TritechMicron(Node):
             else:
                 self.nbins = dbytes * 2
                 bin_size = 4
-            self.get_logger().debug("DBytes is %d", dbytes)
+            self.get_logger().debug("DBytes is %d" % dbytes)
 
             # Get bins.
             bins = [data.read(bin_size).uint for i in range(self.nbins)]
@@ -705,7 +709,7 @@ class TritechMicron(Node):
 
         return bins
 
-    def scan(self, callback):
+    def scan(self):
         """Sends scan command.
 
         This method is blocking but calls callback at every reply with the
@@ -754,7 +758,7 @@ class TritechMicron(Node):
                 timeout_count = 0
             except exceptions.TimeoutError:
                 timeout_count += 1
-                self.get_logger().debug("Timeout count: %d", timeout_count)
+                self.get_logger().debug("Timeout count: %d" % timeout_count)
                 if timeout_count >= MAX_TIMEOUT_COUNT:
                     # Try to resend parameters.
                     self.set(force=True)
@@ -766,7 +770,7 @@ class TritechMicron(Node):
                 bins = self.__parse_head_data(data)
             except ValueError as e:
                 # Try again.
-                self.get_logger().err("Failed to parse head data: %r", e)
+                self.get_logger().error("Failed to parse head data: %r" % e)
                 continue
 
             # Generate configuration.
@@ -778,7 +782,7 @@ class TritechMicron(Node):
             }
 
             # Run callback.
-            slice = ScanSlice(self.heading, bins, config)
+            slice = ScanSlice(self.heading, bins, config, self.get_clock().now())
             self.publish(slice)
 
     def preempt(self):
@@ -842,7 +846,7 @@ class TritechMicron(Node):
         self.no_params = head_inf[6]
         self.has_cfg = head_inf[7]
 
-        self.get_logger().info("UP TIME:     %s", self.up_time)
+        self.get_logger().info("UP TIME:     %s" % self.up_time)
         # rospy.logdebug("RECENTERING: %s", self.recentering)
         # rospy.logdebug("CENTRED:     %s", self.centred)
         # rospy.logdebug("MOTORING:    %s", self.motoring)
@@ -851,14 +855,14 @@ class TritechMicron(Node):
         # rospy.logdebug("SCANNING:    %s", self.scanning)
         # rospy.logdebug("NO PARAMS:   %s", self.no_params)
         # rospy.logdebug("HAS CFG:     %s", self.has_cfg)
-        self.get_logger().info("RECENTERING: %s", self.recentering)
-        self.get_logger().info("CENTRED:     %s", self.centred)
-        self.get_logger().info("MOTORING:    %s", self.motoring)
-        self.get_logger().info("MOTOR ON:    %s", self.motor_on)
-        self.get_logger().info("CLOCKWISE:   %s", self.scanright)
-        self.get_logger().info("SCANNING:    %s", self.scanning)
-        self.get_logger().info("NO PARAMS:   %s", self.no_params)
-        self.get_logger().info("HAS CFG:     %s", self.has_cfg)
+        self.get_logger().info("RECENTERING: %s" % self.recentering)
+        self.get_logger().info("CENTRED:     %s" % self.centred)
+        self.get_logger().info("MOTORING:    %s" % self.motoring)
+        self.get_logger().info("MOTOR ON:    %s" % self.motor_on)
+        self.get_logger().info("CLOCKWISE:   %s" % self.scanright)
+        self.get_logger().info("SCANNING:    %s" % self.scanning)
+        self.get_logger().info("NO PARAMS:   %s" % self.no_params)
+        self.get_logger().info("HAS CFG:     %s" % self.has_cfg)
 
 class Resolution(object):
 

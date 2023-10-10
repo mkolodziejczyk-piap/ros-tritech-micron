@@ -22,12 +22,13 @@ __author__ = "Anass Al-Wohoush"
 def main(args=None):
     rclpy.init(args=args)
 
-    with TritechMicron() as node:
-        try:
-            node.scan()
-        except KeyboardInterrupt:
-            node.preempt()
-            node.destroy_node()
+    # with TritechMicron() as node:
+    node = TritechMicron()
+    try:
+        node.scan()
+    except KeyboardInterrupt:
+        node.preempt()
+        node.destroy_node()
 
     # node = TestParams()
     # rclpy.spin(node)

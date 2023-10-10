@@ -22,17 +22,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
  ament_export_dependencies(rosidl_default_runtime)
 
-# catkin_install_python(
-#   PROGRAMS
-#     scripts/csv_to_pointcloud.py
-#     scripts/scan.py
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
-# Install Python executables
-# install(PROGRAMS
-#   scripts/scan.py
-#   DESTINATION lib/${PROJECT_NAME}
-# )
-install(PROGRAMS scripts/scan.py DESTINATION bin)
+install(PROGRAMS scripts/scan.py 
+  scripts/image_node.py
+  scripts/tritech_micron_merge.py
+DESTINATION lib/${PROJECT_NAME})
+
 ament_package()

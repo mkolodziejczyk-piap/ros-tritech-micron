@@ -1,16 +1,20 @@
 <launch>
-  <!-- Read arguments -->
-  <arg name="port" default="/dev/sonar"/>
+  <arg name="port" default="/dev/ttyUSB0"/>
   <arg name="frame" default="sonar"/>
 
-  <node name="tritech_micron"
-        pkg="tritech_micron"
-        type="scan.py"
-        output="screen"
-        respawn="true"
-        respawn_delay="5">
-    <!-- Set ROS parameters -->
-    <param name="port" value="$(arg port)"/>
-    <param name="frame" value="$(arg frame)"/>
+  <node pkg="tritech_micron" exec="scan.py" name="tritech_micron" output="screen">
+    <param name="port" value="$(var port)"/>
+    <param name="frame" value="$(var frame)"/>
   </node>
+
+  <node name="tritech_micron_merge" pkg="tritech_micron" exec="tritech_micron_merge.py" output="screen">
+    <param name="namespace" value="" />
+    <param name="frame_id" value="sonar" />    
+  </node>
+
+  <!-- <node name="image_node" pkg="tritech_micron" exec="image_node.py" output="screen">
+  </node> -->
+
+  <node pkg="tf2_ros" exec="static_transform_publisher" name="static_tf_fake" args="0 0 0 0 0 0 world sonar" />
+
 </launch>

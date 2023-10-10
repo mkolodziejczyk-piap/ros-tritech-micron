@@ -3,12 +3,14 @@
 
 import math
 import numpy as np
-import rospy
+import rclpy
 from tritech_micron.msg import TritechMicronConfig
-from tf.transformations import quaternion_from_euler
+# from tf.transformations import quaternion_from_euler
+from transforms3d.euler import euler2quat
 from sensor_msgs.msg import ChannelFloat32, PointCloud
 from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import Point32, Pose, PoseStamped, Quaternion
+from std_msgs.msg import Header
 
 __author__ = "Anass Al-Wohoush"
 
@@ -69,7 +71,7 @@ class ScanSlice(object):
         timestamp: ROS timestamp.
     """
 
-    def __init__(self, heading, bins, config):
+    def __init__(self, heading, bins, config, t):
         """Constructs ScanSlice instance.
 
         Args:
@@ -81,7 +83,7 @@ class ScanSlice(object):
         self.bins = bins
         self.config = config
         self.range = config["range"]
-        self.timestamp = rospy.get_rostime()
+        self.timestamp = t.to_msg() # rospy.get_rostime()
 
     def to_config(self, frame):
         """Returns a TritechMicronConfig message corresponding to slice
@@ -99,39 +101,6 @@ class ScanSlice(object):
 
         return config
 
-    def to_pointcloud(self, frame):
-        """Returns a PointCloud message corresponding to slice.
-
-        Args:
-            frame: Frame ID.
-
-        Returns:
-            A sensor_msgs.msg.PointCloud.
-        """
-
-        # Construct PointCloud message.
-        cloud = PointCloud()
-        cloud.header.frame_id = frame
-        cloud.header.stamp = self.timestamp
-
-        # Convert bins to list of Point32 messages.
-        nbins = self.config["nbins"]
-        r_step = self.range / nbins
-        x_unit = math.cos(self.heading) * r_step
-        y_unit = math.sin(self.heading) * r_step
-        cloud.points = [
-            Point32(x=x_unit * r, y=y_unit * r, z=0.00)
-            for r in range(1, nbins + 1)
-        ]
-
-        # Set intensity channel.
-        channel = ChannelFloat32()
-        channel.name = "intensity"
-        channel.values = self.bins
-        cloud.channels = [channel]
-
-        return cloud
-    
     # def to_pointcloud(self, frame):
     #     """Returns a PointCloud message corresponding to slice.
 
@@ -143,64 +112,109 @@ class ScanSlice(object):
     #     """
 
     #     # Construct PointCloud message.
-    #     # cloud = PointCloud()
-    #     # cloud.header.frame_id = frame
-    #     # cloud.header.stamp = self.timestamp
-
-    #     # # Convert bins to list of Point32 messages.
-    #     # nbins = self.config["nbins"]
-    #     # r_step = self.range / nbins
-    #     # x_unit = math.cos(self.heading) * r_step
-    #     # y_unit = math.sin(self.heading) * r_step
-    #     # cloud.points = [
-    #     #     Point32(x=x_unit * r, y=y_unit * r, z=0.00)
-    #     #     for r in range(1, nbins + 1)
-    #     # ]
-
-    #     # # Set intensity channel.
-    #     # channel = ChannelFloat32()
-    #     # channel.name = "intensity"
-    #     # channel.values = self.bins
-    #     # cloud.channels = [channel]
-
-    #     # Construct PointCloud message.
-    #     header = Header()
-    #     header.frame_id = frame
-    #     header.stamp = self.timestamp
-
-    #     fields = [
-    #         PointField('x', 0, PointField.FLOAT32, 1),
-    #         PointField('y', 4, PointField.FLOAT32, 1),
-    #         PointField('z', 8, PointField.FLOAT32, 1),
-    #         PointField('intensity', 12, PointField.FLOAT32, 1),
-    #     ]
-
-    #     point_step = 16
+    #     cloud = PointCloud()
+    #     cloud.header.frame_id = frame
+    #     cloud.header.stamp = self.timestamp
 
     #     # Convert bins to list of Point32 messages.
     #     nbins = self.config["nbins"]
     #     r_step = self.range / nbins
-    #     x_unit = np.cos(self.heading) * r_step
-    #     y_unit = np.sin(self.heading) * r_step
-    #     r = np.arange(1, nbins + 1)
-    #     points = np.vstack([
-    #         x_unit * r,
-    #         y_unit * r,
-    #         0.00,
-    #         self.bins
-    #     ]).flatten()
+    #     x_unit = math.cos(self.heading) * r_step
+    #     y_unit = math.sin(self.heading) * r_step
+    #     cloud.points = [
+    #         Point32(x=x_unit * r, y=y_unit * r, z=0.00)
+    #         for r in range(1, nbins + 1)
+    #     ]
 
-    #     cloud = PointCloud2(header=header,
-    #                 height=1,
-    #                 width=nbins,
-    #                 is_dense=False, # True
-    #                 is_bigendian=False,
-    #                 fields=self.fields,
-    #                 point_step=self.point_step,
-    #                 row_step=self.point_step * nbins,
-    #                 data=points.tostring())
+    #     # Set intensity channel.
+    #     channel = ChannelFloat32()
+    #     channel.name = "intensity"
+    #     channel.values = self.bins
+    #     cloud.channels = [channel]
 
     #     return cloud
+    
+    def to_pointcloud(self, frame):
+        """Returns a PointCloud message corresponding to slice.
+
+        Args:
+            frame: Frame ID.
+
+        Returns:
+            A sensor_msgs.msg.PointCloud.
+        """
+
+        # Construct PointCloud message.
+        # cloud = PointCloud()
+        # cloud.header.frame_id = frame
+        # cloud.header.stamp = self.timestamp
+
+        # # Convert bins to list of Point32 messages.
+        # nbins = self.config["nbins"]
+        # r_step = self.range / nbins
+        # x_unit = math.cos(self.heading) * r_step
+        # y_unit = math.sin(self.heading) * r_step
+        # cloud.points = [
+        #     Point32(x=x_unit * r, y=y_unit * r, z=0.00)
+        #     for r in range(1, nbins + 1)
+        # ]
+
+        # # Set intensity channel.
+        # channel = ChannelFloat32()
+        # channel.name = "intensity"
+        # channel.values = self.bins
+        # cloud.channels = [channel]
+
+        # Construct PointCloud message.
+        header = Header()
+        header.frame_id = frame
+        header.stamp = self.timestamp
+
+        #TODO self.
+        fields = [
+            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+            PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1),
+        ]
+        
+        point_step = 16
+
+        # Convert bins to list of Point32 messages.
+        nbins = self.config["nbins"]
+        r_step = self.range / nbins
+        x_unit = np.cos(self.heading) * r_step
+        y_unit = np.sin(self.heading) * r_step
+
+        r = np.arange(1, nbins + 1)
+        points = np.vstack([
+            x_unit * r,
+            y_unit * r,
+            0.00 * r,
+            np.array(self.bins, np.float32)
+        ]).astype('float32').T.flatten()
+
+        # print(f"heading: {self.heading}")
+        # print(f"r_step: {r_step}")
+        # print(f"x_unit: {x_unit}")
+        # print(f"y_unit: {y_unit}")
+
+        # print(f"x_unit * r: {x_unit * r}")
+        # print(f"y_unit * r: {y_unit * r}")
+
+        # print(f'points: {points.dtype}')
+
+        cloud = PointCloud2(header=header,
+                    height=1,
+                    width=nbins,
+                    is_dense=False, # True
+                    is_bigendian=False,
+                    fields=fields,
+                    point_step=point_step,
+                    row_step=point_step * nbins,
+                    data=points.tostring())
+
+        return cloud
 
     def to_posestamped(self, frame):
         """Returns a PoseStamped message corresponding to slice heading.
@@ -217,7 +231,8 @@ class ScanSlice(object):
         posestamped.header.stamp = self.timestamp
 
         # Convert to quaternion.
-        q = Quaternion(*quaternion_from_euler(0, 0, self.heading-math.pi))
+        q = euler2quat(0, 0, self.heading-math.pi)
+        q = Quaternion(x=q[1], y=q[2], z=q[3], w=q[0])
 
         # Make Pose message.
         pose = Pose(orientation=q)

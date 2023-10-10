@@ -2,7 +2,7 @@
 """Tritech Micron serial communication handler."""
 
 import errno
-import rospy
+import rclpy
 import serial
 import select
 import bitstring
@@ -46,7 +46,7 @@ class Socket(object):
             payload: Additional payload to send in packet.
         """
         cmd = Command(message, payload)
-        rospy.logdebug("Sending %s: %s", Message.to_string(message), payload)
+        # rospy.logdebug("Sending %s: %s", Message.to_string(message), payload)
         self.conn.write(cmd.serialize())
 
     def get_reply(self):
@@ -90,7 +90,7 @@ class Socket(object):
                 # Keep looking.
                 continue
 
-        rospy.logdebug("Received %s: %s", reply.name, reply.payload)
+        # rospy.logdebug("Received %s: %s", reply.name, reply.payload)
         return reply
         # except select.error as (code, msg):
         #     # Set SIGINT as KeyboardInterrupt correctly, because pyserial has
