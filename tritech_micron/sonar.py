@@ -137,13 +137,20 @@ class TritechMicron(Node):
         self.frame = self.get_parameter('frame').value
         self.port = self.get_parameter('port').value
 
+        # self.declare_parameter('continuous', rclpy.Parameter.Type.BOOL)
+        # self.declare_parameter('gain', rclpy.Parameter.Type.DOUBLE)
+        # self.declare_parameter('left_limit', rclpy.Parameter.Type.DOUBLE)
+        # self.declare_parameter('right_limit', rclpy.Parameter.Type.DOUBLE)
+        # self.declare_parameter('step', rclpy.Parameter.Type.DOUBLE)
+
         self.open()
 
     # def parameters_callback(self, params):
     #     # do some actions, validate parameters, update class attributes, etc.
     #     config = dict()
-    #     # for param in params:
-    #     #     config[param.name] = param.value
+    #     for param in params:
+    #         if param.name in ['gain', 'left_limit', 'right_limit', 'step']:
+    #             config[param.name] = param.value
     #     self.set(**config)
     #     return SetParametersResult(successful=True)
 
@@ -343,7 +350,8 @@ class TritechMicron(Node):
             SonarNotInitialized: Sonar is not initialized.
         """
         if not self.initialized:
-            raise exceptions.SonarNotInitialized()
+            # raise exceptions.SonarNotInitialized()
+            return
 
         self.__set_params(
             adc8on=adc8on,

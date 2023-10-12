@@ -13,6 +13,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import PointCloud2
 # from jsk_recognition_msgs.msg import PolygonArray
+from tritech_micron.msg import TritechMicronConfig
 
 from visualize import pointcloud_to_image
 
@@ -30,18 +31,29 @@ class SonarMergedImage(Node):
 
         self.create_subscription(PointCloud2, "merged_cloud", self.pc_callback, 10)
         # self.create_subscription(PolygonArray, "/polygons", self.poly_callback, 10)
+        self.create_subscription(TritechMicronConfig, "config", self._config_callback, 10)
 
         self.image_pub = self.create_publisher(Image, "merged_image", 10)
 
+        self.limit = 10
+
     # def poly_callback(self, msg):
     #     self.polyarray_msg = msg
+
+    def _config_callback(self, msg):
+        # self.config = msg
+        self.limit = msg.range
 
     def pc_callback(self, msg):
 
         x, y, z = pointcloud_to_image(msg)
 
-        # fig = plt.figure()
+        # fig = plt.figure(figsize=(8, 8))
         fig, ax = plt.subplots()
+        plt.axis('equal')
+        ax.set_xlim(-self.limit, 0)
+        ax.set_ylim(-self.limit/np.sqrt(2), self.limit/np.sqrt(2))
+        
         plt.pcolormesh(x, y, z, shading='auto')
 
         # draw gt polygons
